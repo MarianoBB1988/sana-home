@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12130f">
+<title>SanaHome</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icono-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icono-192.png">
+<link rel="preload" href="fuentes/inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fuentes/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fuentes/vt323-400.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  /* Sistema de diseño: ver DESIGN.md. Dos colores hacen todo el trabajo: carbón y hueso. */
+  @font-face { font-family: "Inter"; src: url(fuentes/inter-400.woff2) format("woff2"); font-display: swap; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fuentes/jetbrains-mono-400.woff2) format("woff2"); font-display: swap; }
+  @font-face { font-family: "VT323"; src: url(fuentes/vt323-400.woff2) format("woff2"); font-display: swap; }
+  @font-face { font-family: "Comfortaa"; src: url(fuentes/comfortaa-400.woff2) format("woff2"); font-display: swap; }
+
+  :root {
+    --carbon: #12130f;        /* Midnight Carbon: el lienzo */
+    --hueso: #e4dfda;         /* Bone Glow: todo el texto */
+    --hueso-tenue: #8f8b85;   /* hueso apagado para datos secundarios */
+    --veta: #3c3c38;          /* Charcoal Vein: divisores y bordes sutiles */
+    --rosa: #f5c2c8;          /* Rose Quartz Bloom: solo como luz ambiente del logo y para errores */
+
+    --f-hud: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+    --f-display: "VT323", "Departure Mono", ui-monospace, monospace;
+    --f-texto: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-marca: "Comfortaa", "Quicksand", ui-rounded, var(--f-texto);  /* la misma letra redondeada del logo */
+
+    --e4: 4px; --e8: 8px; --e12: 12px; --e24: 24px; --e64: 64px;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--carbon);
+    color: var(--hueso);
+    font: 400 16px/1.25 var(--f-texto);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select { font: inherit; color: inherit; font-weight: 400; }
+  button { cursor: pointer; }
+  b, strong, h1, h2, h3, legend { font-weight: 400; }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 1px solid var(--hueso); outline-offset: 2px; }
+
+  /* Etiqueta de telemetría: la voz "HUD" para toda la meta-información */
+  .hud {
+    font: 400 12px/1.25 var(--f-hud);
+    letter-spacing: -0.6px;
+    text-transform: uppercase;
+    color: var(--hueso);
+  }
+  .hud.tenue { color: var(--hueso-tenue); }
+
+  /* Píldora: todo lo interactivo. Fantasma por defecto, rellena cuando está activa. */
+  .pildora {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--e8);
+    border: 1px solid var(--veta); background: transparent; color: var(--hueso);
+    border-radius: 9999px; padding: 9px 16px; min-height: 36px;
+    font: 400 12px/1.25 var(--f-hud); letter-spacing: -0.6px; text-transform: uppercase;
+    white-space: nowrap; transition: background .15s, color .15s, border-color .15s;
+  }
+  .pildora:hover { border-color: var(--hueso); }
+  .pildora.llena, .pildora[aria-pressed="true"], .pildora[aria-selected="true"] { background: var(--hueso); color: var(--carbon); border-color: var(--hueso); }
+  .pildora:disabled { opacity: .4; cursor: default; }
+  .pildora svg, .panel-titulo .hud svg { width: 16px; height: 16px; flex: none; }
+  .panel-titulo .hud { display: inline-flex; align-items: center; gap: var(--e8); }
+  select.pildora { appearance: none; padding-right: 30px; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23e4dfda'/%3E%3C/svg%3E") no-repeat right 14px center; }
+  select.pildora option { background: var(--carbon); color: var(--hueso); text-transform: none; }
+
+  /* Logo: el PNG blanco funciona como máscara, así toma el color hueso */
+  .logo {
+    display: block; aspect-ratio: 492 / 467;
+    background: var(--hueso);
+    -webkit-mask: url(logo.png) center / contain no-repeat;
+    mask: url(logo.png) center / contain no-repeat;
+  }
+
+  /* ---------- Estructura ---------- */
+  .app {
+    height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "cabecera" "contenido" "pestanas";
+  }
+
+  /* Cabecera compacta (celular y tablet) */
+  .cabecera {
+    grid-area: cabecera;
+    display: flex; align-items: center; gap: var(--e12);
+    padding: var(--e12) 16px;
+    padding-top: max(var(--e12), env(safe-area-inset-top));
+    border-bottom: 1px solid var(--veta);
+  }
+  .marca { display: flex; align-items: center; gap: var(--e8); text-decoration: none; color: inherit; }
+  .marca .logo { width: 30px; }
+  .marca .nombre { font: 400 22px/1 var(--f-marca); letter-spacing: -0.3px; }
+  .cabecera .datos { margin-left: auto; text-align: right; display: flex; flex-direction: column; gap: var(--e4); }
+  .cabecera .reloj { font: 400 36px/0.7 var(--f-display); padding-top: 4px; }
+
+  /* Panel lateral (pantallas anchas): marca, logo como objeto héroe y telemetría */
+  .lateral { display: none; }
+
+  .contenido { grid-area: contenido; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .panel { min-height: 0; display: flex; flex-direction: column; }
+  .panel-titulo {
+    display: flex; align-items: center; gap: var(--e8); flex-wrap: wrap;
+    padding: var(--e12) 16px;
+  }
+  .panel-titulo .acciones { margin-left: auto; display: flex; gap: var(--e4); }
+
+  /* ---------- Charla: transcripción estilo terminal ---------- */
+  .mensajes {
+    flex: 1; overflow-y: auto;
+    padding: var(--e4) 16px var(--e24);
+    display: flex; flex-direction: column; gap: var(--e24);
+    scrollbar-width: thin; scrollbar-color: var(--veta) transparent;
+  }
+  .msg { display: flex; flex-direction: column; gap: var(--e4); max-width: 62ch; }
+  .msg .quien { font: 400 12px/1.25 var(--f-hud); letter-spacing: -0.6px; text-transform: uppercase; color: var(--hueso-tenue); }
+  .msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.yo { align-self: flex-end; text-align: right; }
+  .msg.yo p { color: var(--hueso-tenue); }
+  .msg.error p { color: var(--rosa); }
+  .cursor::after { content: "█"; margin-left: 2px; font-family: var(--f-hud); animation: parpadeo 1s steps(1) infinite; }
+  @keyframes parpadeo { 50% { opacity: 0; } }
+
+  .sugerencias { display: flex; gap: var(--e4); padding: 0 16px var(--e12); overflow-x: auto; scrollbar-width: none; }
+  .sugerencias::-webkit-scrollbar { display: none; }
+  .sugerencias .pildora { text-transform: none; letter-spacing: 0; font-family: var(--f-texto); font-size: 14px; }
+
+  form.escribir {
+    display: flex; gap: var(--e4); align-items: center;
+    padding: var(--e12) 16px; border-top: 1px solid var(--veta);
+  }
+  form.escribir input {
+    flex: 1; min-width: 0; height: 44px;
+    border: 1px solid var(--veta); background: transparent; border-radius: 9999px;
+    padding: 0 18px; outline: none; font-size: 16px;
+  }
+  form.escribir input::placeholder { color: var(--hueso-tenue); }
+  form.escribir input:focus { border-color: var(--hueso); }
+  form.escribir .pildora { height: 44px; padding: 0 18px; }
+  #micro.grabando { background: var(--hueso); color: var(--carbon); animation: parpadeo 1.2s steps(1) infinite; }
+
+  /* ---------- Casa: lista de telemetría ---------- */
+  .casa { flex: 1; overflow-y: auto; padding: 0 16px var(--e24); scrollbar-width: thin; scrollbar-color: var(--veta) transparent; }
+  .grupo + .grupo { margin-top: var(--e24); }
+  .grupo > .hud { padding: var(--e8) 0; }
+  .disp {
+    width: 100%; display: flex; align-items: center; gap: var(--e12);
+    padding: var(--e12) 0; border: none; border-top: 1px solid var(--veta); background: none; text-align: left;
+  }
+  .grupo .disp:last-child { border-bottom: 1px solid var(--veta); }
+  .disp .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--e4); }
+  .disp .nombre { overflow-wrap: anywhere; }
+  .disp .botones { display: flex; gap: var(--e4); flex-wrap: wrap; justify-content: flex-end; }
+  .disp.sin-conexion { opacity: .4; }
+  .disp.ocupado { opacity: .5; pointer-events: none; }
+  button.disp:hover .pildora { border-color: var(--hueso); }
+
+  .vacio { color: var(--hueso-tenue); display: flex; flex-direction: column; gap: var(--e12); padding-top: var(--e8); }
+  .vacio p { margin: 0; }
+  .vacio .titulo { color: var(--hueso); }
+  .vacio ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: var(--e8); }
+  .vacio code { font: 400 13px/1.25 var(--f-hud); color: var(--hueso); }
+
+  /* ---------- Pestañas (celular) ---------- */
+  .pestanas {
+    grid-area: pestanas; display: flex; gap: var(--e4);
+    padding: var(--e12) 16px; padding-bottom: max(var(--e12), env(safe-area-inset-bottom));
+    border-top: 1px solid var(--veta);
+  }
+  .pestanas .pildora { flex: 1; }
+
+  /* ---------- Ajustes ---------- */
+  dialog {
+    width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+    padding: 0; border: 1px solid var(--veta); border-radius: 0;
+    background: var(--carbon); color: var(--hueso);
+  }
+  dialog::backdrop { background: rgba(18, 19, 15, .8); }
+  dialog form { display: flex; flex-direction: column; gap: var(--e24); padding: var(--e24); }
+  dialog .encabezado { display: flex; flex-direction: column; gap: var(--e8); }
+  dialog h2 { margin: 0; font: 400 30px/1.13 var(--f-texto); }
+  dialog .ayuda { margin: 0; color: var(--hueso-tenue); }
+  dialog fieldset { border: none; margin: 0; padding: 0; display: grid; gap: var(--e12); }
+  dialog legend { padding: 0 0 var(--e8); }
+  .campo { display: flex; flex-direction: column; gap: var(--e4); min-width: 0; }
+  .campo input, .campo select {
+    height: 42px; border: 1px solid var(--veta); background: transparent; border-radius: 9999px;
+    padding: 0 16px; outline: none; min-width: 0; font-size: 16px;
+  }
+  .campo select { appearance: none; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23e4dfda'/%3E%3C/svg%3E") no-repeat right 16px center; padding-right: 34px; }
+  .campo select option { background: var(--carbon); }
+  .campo input::placeholder { color: var(--hueso-tenue); opacity: .6; }
+  .campo input:focus, .campo select:focus { border-color: var(--hueso); }
+  .campo small { color: var(--hueso-tenue); font-size: 13px; }
+  .dos { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e12); align-items: end; }
+  .zona { display: flex; gap: var(--e4); }
+  .zona select { flex: 1; }
+  .comparar { display: flex; flex-direction: column; gap: var(--e8); align-items: flex-start; }
+  .comparacion { width: 100%; display: flex; flex-direction: column; }
+  .comparacion button {
+    display: flex; align-items: baseline; gap: var(--e12); width: 100%; text-align: left;
+    background: none; border: none; border-top: 1px solid var(--veta); padding: var(--e8) 0;
+  }
+  .comparacion button:last-child { border-bottom: 1px solid var(--veta); }
+  .comparacion button:hover .nombre-fuente { text-decoration: underline; }
+  .comparacion button[aria-pressed="true"] .nombre-fuente::before { content: "● "; }
+  .comparacion .nombre-fuente { flex: 1; min-width: 0; }
+  .comparacion .grados { font: 400 28px/0.7 var(--f-display); }
+  .comparacion .error { color: var(--hueso-tenue); font-size: 13px; }
+  .pie { display: flex; align-items: center; justify-content: flex-end; gap: var(--e4); flex-wrap: wrap; }
+  .pie .estado-guardado { margin-right: auto; }
+  .pie .estado-guardado.error { color: var(--rosa); }
+
+  /* ---------- Escena del clima (fondo del panel lateral y de la cabecera) ----------
+     Cielo según el estado, sol con disco y resplandor rosa, nubes con forma, lluvia, nieve y relámpagos. */
+  .escena {
+    position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+    --recorrido: 640px;  /* cuánto viajan las nubes */
+    background: var(--cielo, transparent);
+  }
+  .escena > * { position: absolute; transition: opacity 1.2s; opacity: 0; }
+  .escena .velo { inset: 0; opacity: 1; background: linear-gradient(to bottom, transparent 45%, var(--carbon) 96%); z-index: 5; }
+
+  /* Cielos */
+  .escena[data-dia="1"][data-cat="despejado"] { --cielo: linear-gradient(180deg, #2f86d6 0%, #4a9ee3 30%, #6fb6ea 52%, #3a5f80 76%, var(--carbon) 100%); }
+  .escena[data-dia="1"][data-cat="parcial"]   { --cielo: linear-gradient(180deg, #3d84c4 0%, #5c9bd0 32%, #7eb0d8 52%, #3e5a72 76%, var(--carbon) 100%); }
+  .escena[data-dia="0"]:is([data-cat="despejado"], [data-cat="parcial"]) { --cielo: linear-gradient(180deg, #0a1631 0%, #10203f 40%, #142036 65%, var(--carbon) 100%); }
+  .escena[data-dia="1"]:is([data-cat="nublado"], [data-cat="niebla"]) { --cielo: linear-gradient(180deg, #6f8396 0%, #8597a8 32%, #7d8a96 52%, #3f4750 76%, var(--carbon) 100%); }
+  .escena[data-dia="1"]:is([data-cat="llovizna"], [data-cat="lluvia"]) { --cielo: linear-gradient(180deg, #4d5d6d 0%, #5d6c7a 35%, #48535d 58%, #2b3036 78%, var(--carbon) 100%); }
+  .escena[data-dia="1"][data-cat="tormenta"] { --cielo: linear-gradient(180deg, #2f3846 0%, #3a4352 35%, #2c323c 60%, #1d2026 80%, var(--carbon) 100%); }
+  .escena[data-dia="1"][data-cat="nieve"] { --cielo: linear-gradient(180deg, #9aa6b2 0%, #aeb8c2 32%, #8c96a0 55%, #474c52 78%, var(--carbon) 100%); }
+  .escena[data-dia="0"]:is([data-cat="nublado"], [data-cat="niebla"], [data-cat="llovizna"], [data-cat="lluvia"], [data-cat="tormenta"], [data-cat="nieve"]) {
+    --cielo: linear-gradient(180deg, #1a2130 0%, #1c2230 40%, #171b22 65%, var(--carbon) 100%);
+  }
+
+  /* Sol: disco cálido con dos halos */
+  .escena .sol {
+    width: 110px; height: 110px; top: 70px; right: 46px; border-radius: 50%;
+    background: radial-gradient(circle, #fffaf0 0%, #fff0c8 50%, #ffe08a 100%);
+    box-shadow: 0 0 60px 22px rgba(255, 236, 170, .55), 0 0 200px 100px rgba(255, 240, 200, .22);
+    animation: latir 9s ease-in-out infinite;
+  }
+  /* Medialuna: una sombra interior sobre un círculo vacío */
+  .escena .luna {
+    width: 76px; height: 76px; top: 86px; right: 60px; border-radius: 50%;
+    box-shadow: inset 16px -7px 0 0 var(--hueso), 0 0 90px 20px rgba(228, 223, 218, .12);
+    transform: rotate(-20deg);
+  }
+  .escena .estrellas, .escena .nubes, .escena .gotas, .escena .copos { inset: 0; }
+  .escena .estrella { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: var(--hueso); animation: titilar 3s ease-in-out infinite; }
+
+  /* Nube: tres "bollos" y una base, todo con gradientes */
+  .escena .nube {
+    position: absolute; left: -230px; width: 210px; height: 96px;
+    background:
+      radial-gradient(circle at 62px 60px, var(--hueso) 0 34px, transparent 35px),
+      radial-gradient(circle at 108px 44px, var(--hueso) 0 42px, transparent 43px),
+      radial-gradient(circle at 155px 62px, var(--hueso) 0 30px, transparent 31px),
+      radial-gradient(ellipse 84px 24px at 108px 70px, var(--hueso) 0 98%, transparent 100%);
+    filter: blur(2px);
+    animation: derivar linear infinite;
+  }
+  .escena[data-dia="1"] .nube { filter: blur(2px) brightness(1.12); }
+  .escena:is([data-cat="lluvia"], [data-cat="llovizna"]) .nube { filter: blur(2px) brightness(.8); }
+  .escena[data-cat="tormenta"] .nube, .escena[data-dia="0"] .nube { filter: blur(2px) brightness(.5); }
+
+  .escena .gota { position: absolute; top: -30px; width: 1.5px; height: 26px; background: linear-gradient(transparent, rgba(228, 223, 218, .7)); animation: caer linear infinite; }
+  .escena .copo { position: absolute; top: -10px; width: 5px; height: 5px; border-radius: 50%; background: rgba(228, 223, 218, .85); animation: nevar linear infinite; }
+  .escena .niebla { inset: 15% -20% 25%; background: repeating-linear-gradient(to bottom, transparent 0 20px, rgba(228, 223, 218, .14) 20px 44px); filter: blur(8px); animation: derivar-niebla 30s ease-in-out infinite alternate; }
+  .escena .relampago { inset: 0; background: rgba(228, 223, 218, .9); }
+
+  /* Qué capas se ven en cada estado */
+  .escena[data-dia="1"]:is([data-cat="despejado"], [data-cat="parcial"]) .sol { opacity: 1; }
+  .escena[data-dia="0"]:is([data-cat="despejado"], [data-cat="parcial"]) :is(.luna, .estrellas) { opacity: 1; }
+  .escena[data-dia="0"][data-cat="parcial"] .estrellas { opacity: .5; }
+  .escena[data-cat="parcial"] .nubes { opacity: .6; }
+  .escena:is([data-cat="nublado"], [data-cat="llovizna"], [data-cat="lluvia"], [data-cat="tormenta"], [data-cat="nieve"]) .nubes { opacity: 1; }
+  .escena:is([data-cat="llovizna"], [data-cat="lluvia"], [data-cat="tormenta"]) .gotas { opacity: 1; }
+  .escena[data-cat="llovizna"] .gotas { opacity: .5; }
+  .escena[data-cat="nieve"] .copos { opacity: 1; }
+  .escena[data-cat="niebla"] .niebla { opacity: 1; }
+  .escena[data-cat="tormenta"] .relampago { animation: relampago 7s infinite; }
+
+  /* En la cabecera (celular y tablet) todo va más chico y sin velo */
+  .cabecera { position: relative; overflow: hidden; isolation: isolate; }
+  .cabecera > :not(.escena) { position: relative; z-index: 1; }
+  .cabecera .escena { --recorrido: calc(100vw + 260px); }
+  .cabecera .escena .velo { background: linear-gradient(to right, rgba(18, 19, 15, .55), transparent 40%, transparent 60%, rgba(18, 19, 15, .55)); }
+  /* En la cabecera el sol es solo resplandor (un disco taparía la hora) */
+  .cabecera .escena .sol { width: 260px; height: 260px; top: -150px; right: auto; left: 35%; box-shadow: none; background: radial-gradient(circle, rgba(255, 244, 200, .85) 0%, rgba(255, 236, 170, .3) 35%, transparent 70%); }
+  /* El cielo de la cabecera no se funde a negro: es una franja de cielo */
+  .cabecera .escena[data-dia="1"][data-cat="despejado"] { --cielo: linear-gradient(180deg, #2f86d6, #4a9ee3); }
+  .cabecera .escena[data-dia="1"][data-cat="parcial"] { --cielo: linear-gradient(180deg, #3d84c4, #5c9bd0); }
+  .cabecera .escena[data-dia="0"]:is([data-cat="despejado"], [data-cat="parcial"]) { --cielo: linear-gradient(180deg, #0a1631, #10203f); }
+  .cabecera .escena[data-dia="1"]:is([data-cat="nublado"], [data-cat="niebla"]) { --cielo: linear-gradient(180deg, #6f8396, #8597a8); }
+  .cabecera .escena[data-dia="1"]:is([data-cat="llovizna"], [data-cat="lluvia"]) { --cielo: linear-gradient(180deg, #4d5d6d, #5d6c7a); }
+  .cabecera .escena[data-dia="1"][data-cat="tormenta"] { --cielo: linear-gradient(180deg, #2f3846, #3a4352); }
+  .cabecera .escena[data-dia="1"][data-cat="nieve"] { --cielo: linear-gradient(180deg, #9aa6b2, #aeb8c2); }
+  .cabecera .escena[data-dia="0"]:not([data-cat="despejado"], [data-cat="parcial"]) { --cielo: linear-gradient(180deg, #1a2130, #1c2230); }
+  .cabecera .escena .velo { background: linear-gradient(to right, rgba(18, 19, 15, .35), transparent 35%, transparent 65%, rgba(18, 19, 15, .35)); }
+
+  /* Texto sobre el cielo: sombra suave para que se lea sobre celeste */
+  .lateral > :not(.escena), .cabecera > :not(.escena) { text-shadow: 0 1px 3px rgba(10, 20, 35, .45); }
+  .lateral .hud.tenue, .cabecera .hud.tenue { color: rgba(228, 223, 218, .85); }
+  .cabecera .pildora, .lateral .pildora { background: rgba(18, 19, 15, .35); border-color: rgba(228, 223, 218, .5); }  .cabecera .escena .luna { width: 22px; height: 22px; top: 8px; right: auto; left: 48%; box-shadow: inset 5px -2px 0 0 var(--hueso), 0 0 30px 8px rgba(228, 223, 218, .12); }
+  .cabecera .escena .nube { transform-origin: left top; scale: .5; }
+
+  @keyframes latir { 50% { transform: scale(1.05); } }
+  @keyframes titilar { 50% { opacity: .2; } }
+  @keyframes derivar { to { transform: translateX(var(--recorrido)); } }
+  @keyframes derivar-niebla { to { transform: translateX(12%); } }
+  @keyframes caer { to { transform: translate(-40px, 110vh); } }
+  @keyframes nevar { to { transform: translate(30px, 110vh); } }
+  @keyframes relampago { 0%, 91%, 93.5%, 96%, 100% { opacity: 0; } 92%, 95% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) {
+    .escena * { animation: none !important; }
+    .escena .nube { left: auto; right: 10%; }  /* quietas pero visibles */
+  }
+
+  .clima-corto[hidden] { display: none; }
+
+  /* ---------- Celular: una sección por vez ---------- */
+  @media (max-width: 799px) {
+    .contenido > .panel { display: none; }
+    .contenido > .panel.activo { display: flex; }
+    .cabecera .fecha { display: none; }
+  }
+  @media (max-width: 420px) {
+    .dos { grid-template-columns: 1fr; }
+    #micro span { display: none; }
+    form.escribir #micro { padding: 0 14px; }
+  }
+
+  /* ---------- Tablet: charla y casa lado a lado ---------- */
+  @media (min-width: 800px) {
+    .pestanas { display: none; }
+    .app { grid-template-areas: "cabecera" "contenido"; grid-template-rows: auto 1fr; }
+    .contenido { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); }
+    #panel-casa { border-left: 1px solid var(--veta); }
+  }
+
+  /* ---------- Escritorio: panel lateral con el logo como objeto central ---------- */
+  @media (min-width: 1100px) {
+    .cabecera { display: none; }
+    .app {
+      grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+      grid-template-rows: 1fr;
+      grid-template-areas: "lateral contenido";
+    }
+    .lateral {
+      grid-area: lateral; display: flex; flex-direction: column; justify-content: space-between;
+      padding: 16px; border-right: 1px solid var(--veta); min-height: 0; overflow: hidden;
+    }
+    .lateral .marca .logo { width: 34px; }
+    .lateral .marca .nombre { font-size: 28px; }
+    .lateral { position: relative; isolation: isolate; }
+    .lateral > :not(.escena) { position: relative; z-index: 1; }
+    .clima { display: flex; flex-direction: column; gap: var(--e4); margin-top: var(--e64); }
+    .clima .temp { font: 400 128px/0.7 var(--f-display); padding: var(--e24) 0 var(--e12); }
+    .clima .desc { font: 400 30px/1.13 var(--f-texto); margin-bottom: var(--e8); }
+    .clima[hidden] + .telemetria { margin-top: auto; }
+    .telemetria { display: flex; flex-direction: column; gap: var(--e4); margin-top: auto; }
+    .telemetria .reloj { font: 400 80px/0.7 var(--f-display); padding: var(--e12) 0 var(--e8); }
+    .telemetria .pildora { align-self: flex-start; margin-top: var(--e12); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Cabecera compacta (celular y tablet) -->
+  <header class="cabecera">
+    <div class="escena" data-cat="" data-dia="1" aria-hidden="true"></div>
+    <a class="marca" href="/" aria-label="SanaHome">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="nombre">SanaHome</span>
+    </a>
+    <div class="datos">
+      <span class="reloj js-reloj">--:--</span>
+      <span class="hud tenue fecha js-fecha"></span>
+      <span class="hud clima-corto" id="clima-corto" hidden></span>
+    </div>
+    <button class="pildora js-abrir-ajustes">Ajustes</button>
+  </header>
+
+  <!-- Panel lateral (escritorio) -->
+  <aside class="lateral">
+    <a class="marca" href="/" aria-label="SanaHome">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="nombre">SanaHome</span>
+    </a>
+    <div class="escena" data-cat="" data-dia="1" aria-hidden="true"></div>
+    <div class="clima" id="clima" hidden>
+      <span class="hud tenue" id="clima-lugar">Ahora</span>
+      <span class="temp" id="clima-temp"></span>
+      <span class="desc" id="clima-desc"></span>
+      <span class="hud" id="clima-dia"></span>
+      <span class="hud tenue" id="clima-extra"></span>
+      <span class="hud tenue" id="clima-fuente"></span>
+    </div>
+    <div class="telemetria">
+      <span class="hud tenue js-zona-etiqueta">Hora local</span>
+      <span class="reloj js-reloj">--:--</span>
+      <span class="hud js-fecha"></span>
+      <span class="hud js-lugar"></span>
+      <span class="hud tenue js-estado">Conectando…</span>
+      <button class="pildora js-abrir-ajustes">Ajustes</button>
+    </div>
+  </aside>
+
+  <main class="contenido">
+    <section class="panel activo" id="panel-charla" aria-label="Charla">
+      <div class="panel-titulo">
+        <span class="hud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>Charla</span>
+        <span class="acciones">
+          <select class="pildora" id="modo-voz" aria-label="Dónde se escuchan las respuestas">
+            <option value="no">Sin voz</option>
+            <option value="aca">Voz acá</option>
+            <option value="casa">Voz en el parlante</option>
+          </select>
+          <button class="pildora" id="nueva" title="Empezar una charla nueva">Nueva</button>
+        </span>
+      </div>
+      <div class="mensajes" id="mensajes" aria-live="polite"></div>
+      <div class="sugerencias" id="sugerencias"></div>
+      <form class="escribir" id="form">
+        <input id="entrada" autocomplete="off" placeholder="Escribile a Sana…" aria-label="Mensaje">
+        <button type="button" class="pildora" id="micro" title="Hablarle a Sana">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Hablar</span>
+        </button>
+        <button class="pildora llena" id="enviar">Enviar</button>
+      </form>
+    </section>
+
+    <section class="panel" id="panel-casa" aria-label="Casa">
+      <div class="panel-titulo">
+        <span class="hud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z"/></svg>Casa</span>
+        <span class="acciones"><button class="pildora" id="refrescar">Actualizar</button></span>
+      </div>
+      <div class="casa" id="casa"><p class="vacio">Cargando…</p></div>
+    </section>
+  </main>
+
+  <nav class="pestanas" role="tablist">
+    <button class="pildora" role="tab" aria-selected="true" data-panel="panel-charla">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>Charla
+    </button>
+    <button class="pildora" role="tab" aria-selected="false" data-panel="panel-casa">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z"/></svg>Casa
+    </button>
+  </nav>
+</div>
+
+<dialog id="ajustes">
+  <form id="form-ajustes" method="dialog">
+    <div class="encabezado">
+      <span class="hud tenue">Ajustes del hogar</span>
+      <h2>¿Dónde queda tu casa?</h2>
+      <p class="ayuda">Sana usa estos datos para el clima, la cotización, las noticias y la hora.</p>
+    </div>
+    <fieldset>
+      <legend class="hud">Ubicación</legend>
+      <div class="dos">
+        <label class="campo"><span class="hud tenue">Ciudad</span><input name="ciudad" required placeholder="Montevideo" autocomplete="address-level2"></label>
+        <label class="campo"><span class="hud tenue">Depto. / provincia / estado</span><input name="region" placeholder="Montevideo" autocomplete="address-level1"></label>
+      </div>
+      <label class="campo"><span class="hud tenue">País</span><input name="pais" placeholder="Uruguay" autocomplete="country-name"></label>
+      <label class="campo"><span class="hud tenue">Zona horaria</span>
+        <span class="zona">
+          <select name="zona_horaria" id="zona"></select>
+          <button type="button" class="pildora" id="zona-local" title="Usar la zona horaria de este dispositivo">Detectar</button>
+        </span>
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend class="hud">Clima</legend>
+      <label class="campo"><span class="hud tenue">Fuente</span>
+        <select name="clima_fuente" id="fuente-clima"></select>
+        <small>Lo que la fuente no informe (máxima, mínima, estado del cielo) se completa con Open-Meteo.</small>
+      </label>
+      <div class="comparar">
+        <button type="button" class="pildora" id="comparar-fuentes">Comparar fuentes ahora</button>
+        <div class="comparacion" id="comparacion" hidden></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend class="hud">Cotización</legend>
+      <label class="campo"><span class="hud tenue">Moneda local</span><input name="moneda" placeholder="peso uruguayo"></label>
+      <label class="campo"><span class="hud tenue">Qué cotizaciones te interesan</span><input name="cotizaciones" placeholder="dólar y euro, compra y venta">
+        <small>Cuando preguntes "¿a cuánto está?" sin aclarar, Sana busca estas.</small>
+      </label>
+    </fieldset>
+    <div class="pie">
+      <span class="hud estado-guardado" id="estado-ajustes" role="status"></span>
+      <button type="button" class="pildora" id="cancelar-ajustes">Cancelar</button>
+      <button class="pildora llena" id="guardar-ajustes">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const todos = (clase) => document.querySelectorAll("." + clase);
+const ponerTexto = (clase, texto) => todos(clase).forEach((el) => el.textContent = texto);
+
+// --- Preferencias del navegador (pueden no estar disponibles) ---
+const guardado = {
+  leer(k, def) { try { return localStorage.getItem(k) ?? def; } catch { return def; } },
+  escribir(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+let sesion = guardado.leer("sana.sesion", null);
+if (!sesion) { sesion = Math.random().toString(36).slice(2) + Date.now().toString(36); guardado.escribir("sana.sesion", sesion); }
+$("modo-voz").value = guardado.leer("sana.voz", "no");
+$("modo-voz").onchange = (e) => guardado.escribir("sana.voz", e.target.value);
+
+async function api(ruta, cuerpo, metodo = "POST") {
+  const opciones = cuerpo instanceof FormData
+    ? { method: metodo, body: cuerpo }
+    : cuerpo ? { method: metodo, headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) } : {};
+  const r = await fetch(ruta, opciones);
+  if (!r.ok) {
+    let detalle = r.statusText;
+    try { detalle = (await r.json()).detail || detalle; } catch {}
+    throw new Error(detalle);
+  }
+  return r;
+}
+
+// --- Reloj (en la zona horaria del hogar) ---
+let zonaHogar;
+function reloj() {
+  const d = new Date();
+  ponerTexto("js-reloj", d.toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: zonaHogar }));
+  ponerTexto("js-fecha", d.toLocaleDateString("es-UY", { weekday: "long", day: "numeric", month: "long", timeZone: zonaHogar }));
+  try {
+    const desfase = new Intl.DateTimeFormat("en", { timeZone: zonaHogar, timeZoneName: "shortOffset" })
+      .formatToParts(d).find((p) => p.type === "timeZoneName").value.replace("GMT", "UTC");
+    ponerTexto("js-zona-etiqueta", `Hora local (${desfase})`);
+  } catch {}
+}
+reloj(); setInterval(reloj, 15000);
+
+// --- Clima (widget del panel lateral y línea corta en la cabecera) ---
+const azar = (min, max) => min + Math.random() * (max - min);
+function particulas(contenedor, cantidad, clase, estilo) {
+  for (let i = 0; i < cantidad; i++) {
+    const p = document.createElement("span");
+    p.className = clase;
+    Object.assign(p.style, estilo(i));
+    contenedor.append(p);
+  }
+}
+const escenas = document.querySelectorAll(".escena");
+escenas.forEach((escena) => {
+  const enCabecera = !!escena.closest(".cabecera");
+  escena.innerHTML = `<div class="sol"></div><div class="luna"></div><div class="estrellas"></div><div class="nubes"></div>
+    <div class="gotas"></div><div class="copos"></div><div class="niebla"></div><div class="relampago"></div><div class="velo"></div>`;
+  const capa = (clase) => escena.querySelector("." + clase);
+  particulas(capa("estrellas"), enCabecera ? 40 : 60, "estrella", () => ({
+    left: azar(0, 100) + "%", top: azar(0, 65) + "%", opacity: azar(.2, .8),
+    animationDelay: -azar(0, 3) + "s", animationDuration: azar(2, 5) + "s",
+  }));
+  // Nubes repartidas a lo largo del recorrido, así siempre hay varias a la vista
+  const cantidadNubes = enCabecera ? 4 : 6;
+  particulas(capa("nubes"), cantidadNubes, "nube", (i) => {
+    const duracion = azar(70, 110);
+    return {
+      top: enCabecera ? azar(-10, 40) + "%" : (2 + ((i * 3) % cantidadNubes) * 9 + azar(-3, 3)) + "%",
+      opacity: azar(.2, .4), animationDuration: duracion + "s",
+      animationDelay: -((i + azar(0, .5)) / cantidadNubes) * duracion + "s",
+    };
+  });
+  particulas(capa("gotas"), enCabecera ? 40 : 80, "gota", () => ({
+    left: azar(-10, 110) + "%", animationDuration: azar(.6, 1.1) + "s", animationDelay: -azar(0, 1.1) + "s",
+  }));
+  particulas(capa("copos"), enCabecera ? 30 : 55, "copo", () => ({
+    left: azar(-10, 100) + "%", opacity: azar(.4, .9), animationDuration: azar(7, 14) + "s", animationDelay: -azar(0, 14) + "s",
+  }));
+});
+function ponerEscena(categoria, dia) {
+  escenas.forEach((e) => { e.dataset.cat = categoria; e.dataset.dia = dia; });
+}
+
+async function cargarClima() {
+  try {
+    const c = await (await api("/api/clima")).json();
+    ponerEscena(c.categoria, c.es_de_dia ? "1" : "0");
+    $("clima-lugar").textContent = "Ahora en " + c.lugar.split(",")[0];
+    $("clima-temp").textContent = c.temperatura + "°";
+    $("clima-desc").textContent = c.descripcion;
+    $("clima-dia").textContent = `Máx ${c.maxima}° · Mín ${c.minima}° · Lluvia ${c.lluvia_probabilidad}%`;
+    $("clima-extra").textContent = `Sensación ${c.sensacion}° · Humedad ${c.humedad}% · Viento ${c.viento} km/h`;
+    $("clima-corto").textContent = `${c.temperatura}° · ${c.descripcion}`;
+    $("clima-fuente").textContent = c.aviso || "Fuente: " + c.fuente;
+    $("clima").hidden = $("clima-corto").hidden = false;
+  } catch {
+    $("clima").hidden = $("clima-corto").hidden = true;
+  }
+  // Para ver otros estados: ?escena=lluvia&dia=0 (despejado, parcial, nublado, niebla, llovizna, lluvia, tormenta, nieve)
+  const prueba = new URLSearchParams(location.search);
+  if (prueba.has("escena") || prueba.has("dia")) {
+    ponerEscena(prueba.get("escena") ?? escenas[0].dataset.cat, prueba.get("dia") ?? escenas[0].dataset.dia);
+  }
+}
+setInterval(() => { if (!document.hidden) cargarClima(); }, 10 * 60 * 1000);
+
+// --- Ajustes del hogar ---
+let ubicacionActual = "";
+function mostrarUbicacion(a) {
+  zonaHogar = a.zona_horaria;
+  reloj();
+  ponerTexto("js-lugar", [a.ciudad, a.region !== a.ciudad ? a.region : "", a.pais].filter(Boolean).join(" — "));
+  const ubicacion = [a.ciudad, a.region, a.pais].join("|");
+  if (ubicacion !== ubicacionActual) { ubicacionActual = ubicacion; cargarClima(); }
+}
+
+const formAjustes = $("form-ajustes");
+const zonaLocal = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const zonas = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [zonaLocal];
+function opcionesZona(seleccionada) {
+  const lista = zonas.includes(seleccionada) ? zonas : [seleccionada, ...zonas];
+  $("zona").replaceChildren(...lista.map((z) => new Option(z.replaceAll("_", " "), z, false, z === seleccionada)));
+}
+
+// Selector de fuente del clima, agrupado; las que no se pueden usar quedan deshabilitadas con el motivo
+async function opcionesFuente(seleccionada) {
+  const fuentes = await (await api("/api/clima/fuentes")).json();
+  const grupos = {};
+  for (const f of fuentes) {
+    grupos[f.grupo] ??= Object.assign(document.createElement("optgroup"), { label: f.grupo });
+    const o = new Option(f.disponible ? f.nombre : `${f.nombre} — ${f.motivo}`, f.id, false, f.id === seleccionada);
+    o.disabled = !f.disponible;
+    grupos[f.grupo].append(o);
+  }
+  $("fuente-clima").replaceChildren(...Object.values(grupos));
+  if (seleccionada) $("fuente-clima").value = seleccionada;
+}
+
+$("fuente-clima").onchange = () => marcarComparacion();
+
+function marcarComparacion() {
+  $("comparacion").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.id === $("fuente-clima").value));
+}
+$("comparar-fuentes").onclick = async () => {
+  const boton = $("comparar-fuentes");
+  boton.disabled = true; boton.textContent = "Consultando…";
+  try {
+    const lista = await (await api("/api/clima/comparar")).json();
+    $("comparacion").replaceChildren(...lista.map((f) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.id = f.id;
+      b.disabled = !!f.error;
+      const nombre = document.createElement("span");
+      nombre.className = "nombre-fuente";
+      nombre.textContent = f.nombre;
+      const valor = document.createElement("span");
+      if (f.error) { valor.className = "error"; valor.textContent = f.error; }
+      else { valor.className = "grados"; valor.textContent = f.temperatura.toLocaleString("es-UY") + "°"; }
+      b.append(nombre, valor);
+      b.onclick = () => { $("fuente-clima").value = f.id; marcarComparacion(); };
+      return b;
+    }));
+    $("comparacion").hidden = false;
+    marcarComparacion();
+  } catch (e) {
+    $("comparacion").textContent = "No pude comparar: " + e.message;
+    $("comparacion").hidden = false;
+  } finally {
+    boton.disabled = false; boton.textContent = "Comparar fuentes ahora";
+  }
+};
+
+async function abrirAjustes() {
+  $("estado-ajustes").textContent = "";
+  $("estado-ajustes").className = "hud estado-guardado";
+  $("comparacion").hidden = true;
+  try {
+    const a = await (await api("/api/ajustes")).json();
+    for (const [k, v] of Object.entries(a)) if (formAjustes.elements[k] && formAjustes.elements[k].tagName !== "SELECT") formAjustes.elements[k].value = v;
+    opcionesZona(a.zona_horaria);
+    await opcionesFuente(a.clima_fuente);
+  } catch (e) {
+    $("estado-ajustes").textContent = "No pude cargar los ajustes: " + e.message;
+    $("estado-ajustes").className = "hud estado-guardado error";
+  }
+  $("ajustes").showModal();
+}
+todos("js-abrir-ajustes").forEach((b) => b.onclick = abrirAjustes);
+$("cancelar-ajustes").onclick = () => $("ajustes").close();
+$("zona-local").onclick = () => opcionesZona(zonaLocal);
+formAjustes.onsubmit = async (e) => {
+  e.preventDefault();
+  $("guardar-ajustes").disabled = true;
+  try {
+    const datos = Object.fromEntries(new FormData(formAjustes));
+    const a = await (await api("/api/ajustes", datos, "PUT")).json();
+    mostrarUbicacion(a);
+    cargarClima();  // la fuente pudo cambiar
+    $("ajustes").close();
+  } catch (err) {
+    $("estado-ajustes").textContent = err.message;
+    $("estado-ajustes").className = "hud estado-guardado error";
+  } finally {
+    $("guardar-ajustes").disabled = false;
+  }
+};
+
+// --- Pestañas (celular) ---
+document.querySelectorAll(".pestanas button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".pestanas button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll(".contenido > .panel").forEach((p) => p.classList.toggle("activo", p.id === b.dataset.panel));
+  if (b.dataset.panel === "panel-casa") cargarCasa();
+});
+if (location.hash === "#casa") document.querySelector('.pestanas [data-panel="panel-casa"]').click();
+
+// --- Charla ---
+const SUGERENCIAS = ["¿Qué hora es?", "¿Cómo está el clima hoy?", "Noticias de hoy", "¿A cuánto está la cotización?", "¿Qué dispositivos hay en casa?"];
+SUGERENCIAS.forEach((s) => {
+  const b = document.createElement("button");
+  b.className = "pildora"; b.type = "button"; b.textContent = s;
+  b.onclick = () => enviar(s);
+  $("sugerencias").append(b);
+});
+
+let nombreAsistente = "Sana";
+function mensaje(clase, texto) {
+  const div = document.createElement("div");
+  div.className = "msg " + clase;
+  const quien = document.createElement("span");
+  quien.className = "quien";
+  quien.textContent = clase === "yo" ? "Vos" : clase === "error" ? "Error" : nombreAsistente;
+  const p = document.createElement("p");
+  if (texto !== undefined) p.textContent = texto;
+  div.append(quien, p);
+  $("mensajes").append(div);
+  $("mensajes").scrollTop = $("mensajes").scrollHeight;
+  return p;
+}
+
+function saludo() {
+  $("mensajes").replaceChildren();
+  mensaje("sana", "¡Hola! ¿En qué te ayudo? Puedo prender cosas de la casa, buscar el clima, noticias o lo que necesites.");
+}
+
+let ocupado = false;
+async function enviar(texto) {
+  texto = texto.trim();
+  if (!texto || ocupado) return;
+  desbloquearAudio();
+  ocupado = true; $("enviar").disabled = true;
+  $("sugerencias").hidden = true;
+  mensaje("yo", texto);
+  const espera = mensaje("sana", "");
+  espera.classList.add("cursor");
+  const modo = $("modo-voz").value;
+  const turno = nuevoTurnoVoz();
+  try {
+    // El servidor manda líneas JSON: quizás un "aviso" (está buscando) y al final la "respuesta" o un "error".
+    const r = await api("/api/chat", { sesion, texto, voz_en_casa: modo === "casa" });
+    const lector = r.body.getReader();
+    const decodificador = new TextDecoder();
+    let pendiente = "", terminado = false;
+    while (!terminado) {
+      const { value, done } = await lector.read();
+      if (done) break;
+      pendiente += decodificador.decode(value, { stream: true });
+      const lineas = pendiente.split("\n");
+      pendiente = lineas.pop();
+      for (const linea of lineas.filter(Boolean)) {
+        const ev = JSON.parse(linea);
+        if (ev.tipo === "aviso") {
+          espera.textContent = ev.texto + " ";
+        } else if (ev.tipo === "respuesta") {
+          espera.classList.remove("cursor");
+          espera.textContent = ev.texto;
+          terminado = true;
+        } else {
+          throw new Error(ev.texto);
+        }
+        if (modo === "aca" && ev.tipo !== "error") hablarAca(ev.texto, turno);
+      }
+    }
+    if (!terminado) throw new Error("se cortó la conexión");
+    if (/prend|apag|encend|aspirad|limpi|música|musica|pausa/i.test(texto)) setTimeout(cargarCasa, 800);
+  } catch (e) {
+    espera.parentElement.remove();
+    mensaje("error", "No pude responder: " + e.message);
+  } finally {
+    ocupado = false; $("enviar").disabled = false;
+    $("mensajes").scrollTop = $("mensajes").scrollHeight;
+  }
+}
+
+// Un solo reproductor, desbloqueado con el toque del usuario (iPhone no deja reproducir audio sin un toque previo).
+const reproductor = new Audio();
+const SILENCIO = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
+function desbloquearAudio() {
+  if ($("modo-voz").value !== "aca" || reproductor.dataset.listo) return;
+  reproductor.src = SILENCIO;
+  reproductor.play().then(() => { reproductor.dataset.listo = "1"; }).catch(() => {});
+}
+
+// Cada mensaje nuevo abre un "turno" que corta lo que estaba sonando.
+// Dentro de un turno, los textos (aviso y respuesta) suenan en orden, frase por frase,
+// y el audio de cada frase se pide antes de que termine la anterior.
+let turnoVoz = 0;
+let colaVoz = Promise.resolve();
+function nuevoTurnoVoz() {
+  reproductor.pause();
+  colaVoz = Promise.resolve();
+  return ++turnoVoz;
+}
+
+function hablarAca(texto, turno) {
+  const frases = texto.split(/(?<=[.!?…:;])\s+/).filter((f) => f.trim());
+  const pedidos = [];
+  const pedir = (i) => pedidos[i] ??= api("/api/voz", { texto: frases[i] }).then((r) => r.blob()).catch(() => null);
+  if (frases.length) pedir(0);
+  colaVoz = colaVoz.then(async () => {
+    for (let i = 0; i < frases.length; i++) {
+      const audio = await pedir(i);
+      if (turno !== turnoVoz) return;
+      if (i + 1 < frases.length) pedir(i + 1);
+      if (!audio) continue;
+      const url = URL.createObjectURL(audio);
+      reproductor.src = url;
+      await new Promise((listo) => {
+        reproductor.onended = reproductor.onerror = reproductor.onpause = listo;
+        reproductor.play().catch(listo);
+      });
+      URL.revokeObjectURL(url);
+      if (turno !== turnoVoz) return;
+    }
+  });
+}
+
+$("form").onsubmit = (e) => { e.preventDefault(); const t = $("entrada").value; $("entrada").value = ""; enviar(t); };
+$("nueva").onclick = async () => { await api("/api/nueva", { sesion, texto: "" }).catch(() => {}); $("sugerencias").hidden = false; saludo(); };
+
+// --- Micrófono del navegador (solo en contextos seguros: localhost o HTTPS) ---
+const textoMicro = $("micro").querySelector("span");
+if (!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder)) {
+  $("micro").onclick = () => mensaje("error",
+    `El navegador solo deja usar el micrófono en direcciones seguras. En la compu donde corre Sana abrí ` +
+    `http://localhost:${location.port || 80}. Desde otros dispositivos hace falta activar HTTPS.`);
+} else {
+  const boton = $("micro");
+  let grabadora = null;
+  boton.onclick = async () => {
+    if (grabadora) { grabadora.stop(); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { mensaje("error", "No tengo permiso para usar el micrófono."); return; }
+    const partes = [];
+    grabadora = new MediaRecorder(stream);
+    grabadora.ondataavailable = (e) => partes.push(e.data);
+
+    // Detección de voz: mide el volumen cada 100 ms y corta solo tras un silencio después de hablar
+    const contexto = new AudioContext();
+    const analizador = contexto.createAnalyser();
+    analizador.fftSize = 1024;
+    contexto.createMediaStreamSource(stream).connect(analizador);
+    const muestras = new Float32Array(analizador.fftSize);
+    const volumen = () => {
+      analizador.getFloatTimeDomainData(muestras);
+      return Math.sqrt(muestras.reduce((s, x) => s + x * x, 0) / muestras.length);
+    };
+    const SILENCIO_FINAL = 1200, MAX_ESPERA = 8000, MAX_FRASE = 20000;
+    let ruido = 0, calibraciones = 0, hablo = false, ultimaVoz = 0;
+    const inicio = performance.now();
+    const vigilar = setInterval(() => {
+      const v = volumen(), ahora = performance.now();
+      if (calibraciones < 4) { ruido += v / 4; calibraciones++; return; }  // los primeros 400 ms: ruido ambiente
+      const umbral = Math.max(ruido * 3, 0.015);
+      if (v > umbral) { hablo = true; ultimaVoz = ahora; }
+      if ((hablo && ahora - ultimaVoz > SILENCIO_FINAL) || (!hablo && ahora - inicio > MAX_ESPERA) || ahora - inicio > MAX_FRASE) {
+        grabadora?.stop();
+      }
+    }, 100);
+
+    grabadora.onstop = async () => {
+      clearInterval(vigilar);
+      contexto.close();
+      stream.getTracks().forEach((t) => t.stop());
+      boton.classList.remove("grabando"); textoMicro.textContent = "Hablar"; grabadora = null;
+      if (!hablo) { mensaje("error", "No te escuché. Tocá Hablar y probá de nuevo."); return; }
+      const tipo = partes[0]?.type || "audio/webm";
+      const extension = tipo.includes("mp4") ? "m4a" : tipo.includes("ogg") ? "ogg" : "webm";
+      const datos = new FormData();
+      datos.append("audio", new Blob(partes, { type: tipo }), "voz." + extension);
+      try {
+        const { texto } = await (await api("/api/transcribir", datos)).json();
+        if (texto) enviar(texto);
+      } catch (e) { mensaje("error", "No pude entender el audio: " + e.message); }
+    };
+    grabadora.start();
+    boton.classList.add("grabando"); textoMicro.textContent = "Escuchando…";
+  };
+}
+
+// --- Casa ---
+const GRUPOS = [
+  { titulo: "Luces y enchufes", dominios: ["light", "switch", "fan"] },
+  { titulo: "Limpieza", dominios: ["vacuum"] },
+  { titulo: "Música", dominios: ["media_player"] },
+  { titulo: "Otros", dominios: ["cover", "climate"] },
+];
+const ESTADOS = {
+  on: "Encendido", off: "Apagado", unavailable: "Sin conexión", unknown: "Desconocido",
+  cleaning: "Limpiando", docked: "En la base", returning: "Volviendo a la base", idle: "En espera", paused: "En pausa", error: "Con error",
+  playing: "Reproduciendo", standby: "En espera", open: "Abierta", closed: "Cerrada", heat: "Calefacción", cool: "Frío",
+};
+const ENCENDIDOS = ["on", "cleaning", "playing", "open", "heat", "cool", "returning"];
+const ALTERNABLES = ["light", "switch", "fan", "cover", "climate"];
+
+async function accionar(fila, entity_id, accion) {
+  fila.classList.add("ocupado");
+  try { await api("/api/dispositivos/accion", { entity_id, accion }); }
+  catch (e) { mensaje("error", e.message); }
+  setTimeout(cargarCasa, 600);
+}
+
+function fila(d) {
+  const dom = d.entity_id.split(".")[0];
+  const encendido = ENCENDIDOS.includes(d.estado);
+  const alternable = ALTERNABLES.includes(dom);
+  const el = document.createElement(alternable ? "button" : "div");
+  el.className = "disp" + (d.estado === "unavailable" ? " sin-conexion" : "");
+
+  const info = document.createElement("span");
+  info.className = "info";
+  const nombre = document.createElement("span");
+  nombre.className = "nombre";
+  nombre.textContent = d.nombre;
+  const estado = document.createElement("span");
+  estado.className = "hud tenue";
+  estado.textContent = ESTADOS[d.estado] || d.estado;
+  info.append(nombre, estado);
+
+  const botones = document.createElement("span");
+  botones.className = "botones";
+  el.append(info, botones);
+
+  if (alternable) {
+    const llave = document.createElement("span");
+    llave.className = "pildora";
+    llave.setAttribute("aria-pressed", encendido);
+    llave.textContent = encendido ? "Encendido" : "Apagado";
+    botones.append(llave);
+    el.setAttribute("aria-label", `${d.nombre}: ${encendido ? "apagar" : "encender"}`);
+    el.onclick = () => accionar(el, d.entity_id, "alternar");
+  } else {
+    const opciones = dom === "vacuum"
+      ? (d.estado === "cleaning" ? [["Pausar", "pausar_aspiradora"], ["A la base", "volver_a_base"]] : [["Limpiar", "limpiar"], ["A la base", "volver_a_base"]])
+      : [[d.estado === "playing" ? "Pausar" : "Reproducir", "play_pausa"], ["Siguiente", "siguiente"]];
+    opciones.forEach(([texto, accion], i) => {
+      const b = document.createElement("button");
+      b.className = "pildora" + (i === 0 && encendido ? " llena" : "");
+      b.textContent = texto;
+      b.onclick = () => accionar(el, d.entity_id, accion);
+      botones.append(b);
+    });
+  }
+  return el;
+}
+
+async function cargarCasa() {
+  const casa = $("casa");
+  try {
+    const r = await (await api("/api/dispositivos")).json();
+    if (!r.configurado) {
+      casa.innerHTML = `<div class="vacio"><p class="titulo">Todavía no hay dispositivos conectados.</p>
+        <ol><li>Instalá Home Assistant en el mini PC.</li>
+        <li>Agregá los relays (integración Tuya) y la aspiradora (Xiaomi Home).</li>
+        <li>Poné <code>HA_URL</code> y <code>HA_TOKEN</code> en el archivo <code>.env</code> y reiniciá Sana.</li></ol>
+        <p>Mientras tanto podés charlar con Sana, preguntarle el clima, noticias o la cotización.</p></div>`;
+      return;
+    }
+    casa.replaceChildren();
+    for (const g of GRUPOS) {
+      const lista = r.dispositivos.filter((d) => g.dominios.includes(d.entity_id.split(".")[0]));
+      if (!lista.length) continue;
+      const grupo = document.createElement("div");
+      grupo.className = "grupo";
+      const titulo = document.createElement("div");
+      titulo.className = "hud tenue";
+      titulo.textContent = `${g.titulo} · ${lista.length}`;
+      grupo.append(titulo);
+      lista.sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach((d) => grupo.append(fila(d)));
+      casa.append(grupo);
+    }
+    if (!casa.children.length) casa.innerHTML = '<p class="vacio">Home Assistant está conectado, pero todavía no tiene dispositivos.</p>';
+  } catch (e) {
+    casa.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "vacio";
+    p.textContent = "No pude cargar los dispositivos: " + e.message;
+    casa.append(p);
+  }
+}
+$("refrescar").onclick = cargarCasa;
+setInterval(() => { if (!document.hidden) cargarCasa(); }, 10000);
+
+// --- Arranque ---
+(async () => {
+  saludo();
+  cargarCasa();
+  try {
+    const s = await (await api("/api/estado")).json();
+    nombreAsistente = s.nombre;
+    ponerTexto("js-estado", s.home_assistant ? "Casa conectada" : "Sin dispositivos conectados");
+    if (!s.voz) $("modo-voz").disabled = true;
+    mostrarUbicacion(await (await api("/api/ajustes")).json());
+  } catch { ponerTexto("js-estado", "Sin conexión con el servidor"); }
+  if (location.hash === "#ajustes") abrirAjustes();
+})();
+</script>
+</body>
+</html>

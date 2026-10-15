@@ -1,0 +1,12 @@
+groq>=1.7
+python-dotenv>=1.0
+requests>=2.32
+numpy>=2.0
+sounddevice>=0.5
+piper-tts>=1.8
+edge-tts>=7.0
+soundfile>=0.13
+tzdata
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
