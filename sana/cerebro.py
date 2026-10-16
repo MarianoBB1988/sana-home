@@ -10,16 +10,27 @@ MAX_MENSAJES = 20  # historial que se conserva (sin contar el prompt de sistema)
 MAX_RONDAS_HERRAMIENTAS = 5
 
 
-def _prompt_sistema() -> str:
-    casa = (
-        "Podés controlar la casa con las herramientas. Si no sabés el entity_id de algo, usá listar_dispositivos primero."
-        if ha.disponible()
-        else "Todavía no hay dispositivos conectados: si te piden controlar algo, explicá que falta configurar Home Assistant."
+def _casa() -> str:
+    """Los dispositivos van en el prompt: así Sana actúa en un solo paso, sin consultar la lista antes."""
+    if not ha.disponible():
+        return "Todavía no hay dispositivos conectados: si te piden controlar algo, explicá que falta configurar Home Assistant."
+    try:
+        lista = "; ".join(f"{d['nombre']} ({d['entity_id']}): {d['estado']}" for d in ha.dispositivos())
+    except Exception:
+        return "Podés controlar la casa con las herramientas; usá listar_dispositivos para ver qué hay."
+    return (
+        f"Dispositivos de la casa ahora (nombre, entity_id y estado): {lista or 'ninguno'}. "
+        "Para prender o apagar usá directamente controlar_dispositivo con ese entity_id; "
+        "si piden algo que no está en la lista, decilo."
     )
+
+
+def _prompt_sistema() -> str:
+    casa = _casa()
     return (
         f"Sos {config.NOMBRE}, un asistente de voz para el hogar. {ajustes.contexto()} "
         "Cuando pregunten por el clima, la cotización o noticias sin decir dónde, se refieren a esa ubicación. "
-        "Hablás en español rioplatense, cálido y directo. "
+        "Hablás en español rioplatense, cálido y directo, siempre con frases completas y solo en español. "
         "Tus respuestas se leen en voz alta: sé breve (una a tres oraciones), sin markdown, listas, emojis ni URLs. "
         "Escribí los números y unidades como se dicen. "
         "Para el clima de hoy en casa usá clima_actual. Para noticias, cotizaciones o cualquier otro dato actual usá "
