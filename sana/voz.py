@@ -90,6 +90,19 @@ class Voz:
 
     # --- Parlante de la casa ---
 
+    def pitido(self) -> None:
+        """Dos tonos cortos ascendentes: "te escucho"."""
+        frecuencia = 24000
+        partes = []
+        for nota in (880, 1320):
+            t = np.arange(int(frecuencia * 0.08)) / frecuencia
+            envolvente = np.minimum(1, np.minimum(t, t[::-1]) * 200)  # sin chasquidos al empezar y terminar
+            partes.append(np.sin(2 * np.pi * nota * t) * envolvente * 0.25)
+        audio = (np.concatenate(partes) * 32767).astype(np.int16)
+        with self._parlante:
+            sd.play(audio, frecuencia, device=config.PARLANTE)
+            sd.wait()
+
     def decir(self, texto: str) -> None:
         """Reproduce en el parlante de la casa. Genera la frase siguiente mientras suena la actual."""
         import soundfile as sf

@@ -1,6 +1,7 @@
 """Sana: asistente de voz para el hogar.
 
-    python main.py               modo voz: Enter para hablar
+    python main.py               modo voz: decís "Sana" y tu pedido (manos libres, en segundo plano)
+    python main.py --enter       modo voz apretando Enter en lugar de decir "Sana"
     python main.py --texto       modo texto: escribís en la consola
     python main.py --web         interfaz web en http://IP-DE-ESTA-PC:8000
     python main.py --dispositivos  lista micrófonos y parlantes
@@ -45,32 +46,65 @@ def modo_texto(cerebro, voz, hablar: bool) -> None:
                 voz.decir(respuesta)
 
 
-def modo_voz(cerebro, voz) -> None:
+SEGUIMIENTO = 5.0  # segundos en que se puede seguir hablando sin repetir la palabra clave
+
+
+def conversar(cerebro, voz, mic) -> None:
+    """Una charla: escucha el pedido, responde, y sigue escuchando un rato por si hay otra pregunta."""
     from sana import oido
 
-    print(f"{config.NOMBRE} en modo voz. Apretá Enter y hablá (Ctrl+C para salir).\n")
+    espera = oido.MAX_ESPERA
     while True:
-        try:
-            input("[Enter para hablar]")
-        except (EOFError, KeyboardInterrupt):
-            break
-        print("  Escuchando...")
-        wav = oido.grabar_frase()
+        print("  Escuchando...", flush=True)
+        wav = oido.grabar_frase(mic, max_espera=espera)
         if not wav:
-            print("  (no escuché nada)")
-            continue
+            print("  (fin de la charla)\n", flush=True)
+            return
         texto = oido.transcribir(cerebro.cliente, wav)
-        print(f"Vos: {texto}")
         if not texto:
-            continue
+            print("  (no entendí nada)\n", flush=True)
+            return
+        print(f"Vos: {texto}", flush=True)
         respuesta = cerebro.responder(texto, avisador(voz))
-        print(f"{config.NOMBRE}: {respuesta}\n")
+        print(f"{config.NOMBRE}: {respuesta}", flush=True)
         voz.decir(respuesta)
+        mic.descartar()  # lo que el micrófono escuchó mientras Sana hablaba era ella misma
+        espera = SEGUIMIENTO
+
+
+def modo_voz(cerebro, voz, con_enter: bool) -> None:
+    from sana import oido
+
+    palabra = None
+    if not con_enter:
+        if config.MODELO_VOSK.exists():
+            palabra = oido.PalabraClave()
+        else:
+            print(f"(No encontré el modelo de Vosk en {config.MODELO_VOSK}: uso Enter en lugar de la palabra clave.)")
+
+    with oido.Microfono() as mic:
+        if palabra:
+            print(f'{config.NOMBRE} escuchando. Decí "{palabra.palabra.capitalize()}" y después tu pedido (Ctrl+C para salir).\n', flush=True)
+        else:
+            print(f"{config.NOMBRE} en modo voz. Apretá Enter y hablá (Ctrl+C para salir).\n")
+        while True:
+            try:
+                if palabra:
+                    palabra.esperar(mic)
+                    print(f'  ("{palabra.palabra}" detectado)', flush=True)
+                else:
+                    input("[Enter para hablar]")
+                voz.pitido()
+                mic.descartar()
+                conversar(cerebro, voz, mic)
+            except (EOFError, KeyboardInterrupt):
+                break
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=f"{config.NOMBRE}, asistente de voz para el hogar")
     p.add_argument("--texto", action="store_true", help="conversar escribiendo")
+    p.add_argument("--enter", action="store_true", help="modo voz con Enter en lugar de la palabra clave")
     p.add_argument("--mudo", action="store_true", help="en modo texto, no leer las respuestas en voz alta")
     p.add_argument("--web", action="store_true", help="servir la interfaz web en la red local")
     p.add_argument("--puerto", type=int, default=8000, help="puerto de la interfaz web (por defecto 8000)")
@@ -109,7 +143,7 @@ def main() -> None:
     if args.texto:
         modo_texto(cerebro, voz, hablar=not args.mudo)
     else:
-        modo_voz(cerebro, voz)
+        modo_voz(cerebro, voz, con_enter=args.enter)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,11 @@
-"""Captura de audio del micrófono y transcripción con Whisper en Groq."""
+"""Micrófono siempre abierto: espera la palabra de activación (local, con Vosk), graba el pedido hasta un
+silencio y lo transcribe con Whisper en Groq. Lo que se habla antes de "Sana" nunca sale del equipo."""
 import io
+import json
+import queue
+import re
 import wave
+from collections import deque
 
 import numpy as np
 import sounddevice as sd
@@ -13,35 +18,104 @@ BLOQUE = 1600  # 100 ms
 SILENCIO_FINAL = 1.2  # segundos de silencio que cierran la frase
 MAX_ESPERA = 8.0  # segundos esperando que empiece a hablar
 MAX_FRASE = 20.0
+PREVIO = 3  # bloques de antes de detectar la voz que se agregan al inicio (para no cortar la primera sílaba)
+
+# Frases que Whisper inventa cuando solo hay ruido
+ALUCINACIONES = re.compile(
+    r"^(gracias( por ver( el video)?)?|subt[ií]tulos.*|amara\.org.*|suscr[ií]bete.*|\.+|…)$", re.I
+)
 
 
 def _rms(bloque: np.ndarray) -> float:
     return float(np.sqrt(np.mean(bloque.astype(np.float32) ** 2)))
 
 
-def grabar_frase() -> bytes | None:
-    """Graba desde que se detecta voz hasta un silencio. Devuelve un WAV, o None si nadie habló."""
-    with sd.InputStream(samplerate=FRECUENCIA, channels=1, dtype="int16", device=config.MICROFONO, blocksize=BLOQUE) as s:
-        # Medir el ruido ambiente durante medio segundo para fijar el umbral.
-        ruido = np.mean([_rms(s.read(BLOQUE)[0]) for _ in range(5)])
-        umbral = max(ruido * 3, 300)
+class Microfono:
+    """Stream continuo en bloques de 100 ms. Se usa con `with Microfono() as mic:`."""
 
-        bloques, hablando, silencio, t = [], False, 0.0, 0.0
+    def __init__(self, dispositivo=None):
+        self._cola: queue.Queue = queue.Queue()
+        self._stream = sd.InputStream(
+            samplerate=FRECUENCIA, channels=1, dtype="int16", blocksize=BLOQUE,
+            device=dispositivo if dispositivo is not None else config.MICROFONO,
+            callback=lambda datos, *_: self._cola.put(datos[:, 0].copy()),
+        )
+        self.ruido = 150.0  # nivel del ruido ambiente, se ajusta solo mientras espera
+
+    def __enter__(self):
+        self._stream.start()
+        return self
+
+    def __exit__(self, *_):
+        self._stream.stop()
+        self._stream.close()
+
+    def leer(self) -> np.ndarray:
+        return self._cola.get()
+
+    def descartar(self) -> None:
+        """Tira lo acumulado (por ejemplo lo que se escuchó mientras Sana hablaba)."""
+        while not self._cola.empty():
+            self._cola.get_nowait()
+
+    def actualizar_ruido(self, bloque: np.ndarray) -> None:
+        self.ruido = 0.95 * self.ruido + 0.05 * _rms(bloque)
+
+
+class PalabraClave:
+    """Detecta la palabra de activación con un modelo de Vosk que corre en el equipo.
+
+    Usa el vocabulario completo (y no una gramática cerrada "sana o nada", que se activa con cualquier frase):
+    en las pruebas no tuvo falsos positivos con "banana", "campana", "Santiago", "semana", etc.
+    """
+
+    def __init__(self, palabra: str = "", modelo=None):
+        import vosk
+
+        vosk.SetLogLevel(-1)
+        self.palabra = (palabra or config.PALABRA_CLAVE).lower()
+        self.modelo = vosk.Model(str(modelo or config.MODELO_VOSK))
+        p = re.escape(self.palabra)
+        # Dicho de corrido, "Sana prendé…" se oye "san aprende…": por eso también vale "san a…" al empezar la frase
+        corrido = rf"|^{re.escape(self.palabra[:-1])} {re.escape(self.palabra[-1])}" if len(self.palabra) > 3 else ""
+        self._patron = re.compile(rf"\b{p}\b{corrido}")
+        self._vosk = vosk
+
+    def esperar(self, mic: Microfono) -> None:
+        reconocedor = self._vosk.KaldiRecognizer(self.modelo, FRECUENCIA)
         while True:
-            bloque = s.read(BLOQUE)[0]
-            t += 0.1
-            fuerte = _rms(bloque) > umbral
-            if not hablando:
-                if fuerte:
-                    hablando = True
-                    bloques.append(bloque)
-                elif t > MAX_ESPERA:
-                    return None
-                continue
-            bloques.append(bloque)
-            silencio = 0.0 if fuerte else silencio + 0.1
-            if silencio >= SILENCIO_FINAL or len(bloques) * 0.1 >= MAX_FRASE:
-                break
+            bloque = mic.leer()
+            mic.actualizar_ruido(bloque)
+            if reconocedor.AcceptWaveform(bloque.tobytes()):
+                texto = json.loads(reconocedor.Result()).get("text", "")
+            else:
+                texto = json.loads(reconocedor.PartialResult()).get("partial", "")
+            if self._patron.search(texto):
+                return
+
+
+def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None:
+    """Graba desde que se detecta voz hasta un silencio. Devuelve un WAV, o None si nadie habló."""
+    umbral = max(mic.ruido * 3, 300)
+    previos: deque = deque(maxlen=PREVIO)
+    bloques, hablando, silencio, t = [], False, 0.0, 0.0
+    while True:
+        bloque = mic.leer()
+        t += 0.1
+        fuerte = _rms(bloque) > umbral
+        if not hablando:
+            if fuerte:
+                hablando = True
+                bloques = list(previos) + [bloque]
+            elif t > max_espera:
+                return None
+            else:
+                previos.append(bloque)
+            continue
+        bloques.append(bloque)
+        silencio = 0.0 if fuerte else silencio + 0.1
+        if silencio >= SILENCIO_FINAL or len(bloques) * 0.1 >= MAX_FRASE:
+            break
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -59,4 +133,5 @@ def transcribir(cliente: Groq, audio: bytes, nombre_archivo: str = "frase.wav") 
         model=config.GROQ_MODELO_STT,
         language="es",
     )
-    return r.text.strip()
+    texto = r.text.strip()
+    return "" if ALUCINACIONES.match(texto.strip(" .!¡¿?")) else texto

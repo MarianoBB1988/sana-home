@@ -23,9 +23,10 @@ pip install -r requirements.txt
 python -m piper.download_voices --download-dir voces es_ES-davefx-medium
 copy .env.example .env      # y poné tu GROQ_API_KEY (https://console.groq.com/keys)
 
-python main.py --web         # interfaz web: chat + panel de la casa
+python main.py               # manos libres: decís "Sana" y tu pedido (así corre en el mini PC)
+python main.py --enter       # igual, pero apretando Enter en lugar de decir "Sana"
 python main.py --texto       # conversar escribiendo en la consola
-python main.py               # conversar con la voz: Enter y hablás
+python main.py --web         # página web opcional: chat, clima y ajustes
 python main.py --dispositivos  # ver micrófonos y parlantes; elegilos en .env (MICROFONO / PARLANTE)
 ```
 
@@ -52,7 +53,10 @@ En **Ajustes** (botón arriba a la derecha) se guardan la ubicación, la fuente 
    curl -fsSL https://raw.githubusercontent.com/MarianoBB1988/sana-home/main/instalar.sh | bash
    ```
    Instala las dependencias, descarga el código en `~/sana-home`, prepara Python y la voz, te pide la clave de Groq
-   y deja Sana arrancando sola al prender el equipo. Al final muestra la dirección para abrirla desde el celular.
+   y deja Sana **escuchando en segundo plano** al prender el equipo: decís "Sana", suena un aviso, y le hablás.
+   La palabra "Sana" se reconoce en el equipo (Vosk): lo que se habla antes no sale a internet.
+   Después de responder, durante 5 segundos podés seguir hablando sin volver a decir "Sana".
+   Con `SANA_WEB=1` antes del comando también queda la página web.
    **Para actualizar**, se vuelve a correr el mismo comando (no toca tu `.env` ni tus ajustes).
    - Mensajes del servicio: `journalctl -u sana-home -f` · Reiniciar: `sudo systemctl restart sana-home`
    - Emparejar el parlante Bluetooth: `bluetoothctl` → `scan on`, `pair XX:XX…`, `trust XX:XX…`, `connect XX:XX…`.
@@ -82,7 +86,6 @@ Con eso Sana ya puede: "prendé la luz del living", "mandá a limpiar la aspirad
 
 ## Próximos pasos
 
-- Palabra de activación ("Sana") con openWakeWord, en lugar de apretar Enter.
 - Poner un tema, artista o playlist por nombre en Spotify.
 - HTTPS en la red local, para usar el micrófono del celular desde la web.
 - Cámaras: "¿dónde está Felipe?" y avisos con Frigate + un modelo con visión.

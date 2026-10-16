@@ -5,14 +5,16 @@
 #   curl -fsSL https://raw.githubusercontent.com/MarianoBB1988/sana-home/main/instalar.sh | bash
 #
 # Volver a correrlo actualiza a la última versión del repositorio sin tocar tu .env ni tus ajustes.
-# Variables opcionales: SANA_DIR (carpeta, por defecto ~/sana-home), SANA_PUERTO (por defecto 8000),
-# SANA_SIN_SERVICIO=1 (no crear el servicio de systemd).
+# Sana queda corriendo en segundo plano, escuchando la palabra "Sana" por el micrófono.
+# Variables opcionales: SANA_DIR (carpeta, por defecto ~/sana-home), SANA_SIN_SERVICIO=1 (no crear el servicio),
+# SANA_WEB=1 (además, servir la página web de Sana en SANA_PUERTO, por defecto 8000).
 set -euo pipefail
 
 REPO="https://github.com/MarianoBB1988/sana-home.git"
 DESTINO="${SANA_DIR:-$HOME/sana-home}"
 PUERTO="${SANA_PUERTO:-8000}"
 VOZ_PIPER="es_ES-davefx-medium"
+MODELO_VOSK="vosk-model-small-es-0.42"
 SERVICIO="sana-home"
 
 verde() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -62,6 +64,15 @@ else
   echo "Ya estaba descargada."
 fi
 
+paso "Descargando el reconocedor local de la palabra \"Sana\" ($MODELO_VOSK)"
+if [ ! -d "voces/$MODELO_VOSK" ]; then
+  curl -fsSL -o voces/vosk.zip "https://alphacephei.com/vosk/models/$MODELO_VOSK.zip"
+  .venv/bin/python -m zipfile -e voces/vosk.zip voces/
+  rm voces/vosk.zip
+else
+  echo "Ya estaba descargado."
+fi
+
 paso "Configuración (.env)"
 if [ ! -f .env ]; then
   cp .env.example .env
@@ -85,11 +96,10 @@ systemctl --user enable --now pipewire pipewire-pulse wireplumber 2>/dev/null ||
 echo "Micrófonos y parlantes que ve Sana:"
 .venv/bin/python main.py --dispositivos || true
 
-if [ "${SANA_SIN_SERVICIO:-0}" != "1" ]; then
-  paso "Servicio para que Sana arranque sola"
-  sudo tee "/etc/systemd/system/$SERVICIO.service" >/dev/null <<EOF
+crear_servicio() {  # nombre, descripción, argumentos de main.py
+  sudo tee "/etc/systemd/system/$1.service" >/dev/null <<EOF
 [Unit]
-Description=SanaHome, asistente de voz para el hogar
+Description=$2
 After=network-online.target sound.target
 Wants=network-online.target
 
@@ -97,7 +107,8 @@ Wants=network-online.target
 User=$USER
 WorkingDirectory=$DESTINO
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
-ExecStart=$DESTINO/.venv/bin/python main.py --web --puerto $PUERTO
+Environment=PYTHONUNBUFFERED=1
+ExecStart=$DESTINO/.venv/bin/python main.py $3
 Restart=always
 RestartSec=5
 
@@ -105,18 +116,30 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
   sudo systemctl daemon-reload
-  sudo systemctl enable "$SERVICIO" >/dev/null 2>&1
-  sudo systemctl restart "$SERVICIO"
+  sudo systemctl enable "$1" >/dev/null 2>&1
+  sudo systemctl restart "$1"
+}
+
+if [ "${SANA_SIN_SERVICIO:-0}" != "1" ]; then
+  paso "Servicio para que Sana arranque sola y escuche en segundo plano"
+  crear_servicio "$SERVICIO" "SanaHome, asistente de voz (palabra clave: Sana)" ""
+  if [ "${SANA_WEB:-0}" = "1" ]; then
+    crear_servicio "$SERVICIO-web" "SanaHome, página web" "--web --puerto $PUERTO"
+  elif [ -f "/etc/systemd/system/$SERVICIO-web.service" ]; then
+    sudo systemctl disable --now "$SERVICIO-web" >/dev/null 2>&1 || true
+  fi
 fi
 
-IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 paso "Listo"
-verde "SanaHome: http://${IP:-localhost}:$PUERTO  (desde el celu o cualquier compu de la casa)"
+verde "Sana está escuchando: decí \"Sana\" y tu pedido (por ejemplo: \"Sana, prendé la luz del living\")."
+if [ "${SANA_WEB:-0}" = "1" ]; then
+  IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  verde "Página web: http://${IP:-localhost}:$PUERTO"
+fi
 cat <<EOF
 
   Configuración:     nano $DESTINO/.env   (después: sudo systemctl restart $SERVICIO)
-  Ver los mensajes:  journalctl -u $SERVICIO -f
-  Hablarle por voz:  cd $DESTINO && .venv/bin/python main.py
+  Ver qué escucha:   journalctl -u $SERVICIO -f
   Actualizar:        volvé a correr este mismo comando
 
 EOF
