@@ -58,11 +58,10 @@ def conversar(cerebro, voz, mic) -> None:
         print("  Escuchando...", flush=True)
         wav = oido.grabar_frase(mic, max_espera=espera)
         if not wav:
-            print("  (fin de la charla)\n", flush=True)
             return
         texto = oido.transcribir(cerebro.cliente, wav)
         if not texto:
-            print("  (no entendí nada)\n", flush=True)
+            print("  (no entendí nada)", flush=True)
             return
         print(f"Vos: {texto}", flush=True)
         respuesta = cerebro.responder(texto, avisador(voz))
@@ -90,6 +89,7 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
         while True:
             try:
                 if palabra:
+                    print(f'Esperando que digas "{palabra.palabra.capitalize()}"...', flush=True)
                     palabra.esperar(mic)
                     print(f'  ("{palabra.palabra}" detectado)', flush=True)
                 else:
@@ -99,6 +99,18 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
                 conversar(cerebro, voz, mic)
             except (EOFError, KeyboardInterrupt):
                 break
+            except Exception as e:  # un error en una charla (internet, Groq...) no apaga a Sana
+                print(f"  (error: {e})", flush=True)
+                try:
+                    voz.decir("Perdón, tuve un problema. Probá de nuevo en un momento.")
+                except Exception:
+                    pass
+            try:
+                voz.pitido(subiendo=False)  # "me quedo en pausa"
+            except Exception as e:
+                print(f"  (no pude reproducir el aviso: {e})", flush=True)
+            mic.descartar()
+            print(flush=True)
 
 
 def main() -> None:

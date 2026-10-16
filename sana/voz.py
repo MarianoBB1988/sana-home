@@ -90,11 +90,11 @@ class Voz:
 
     # --- Parlante de la casa ---
 
-    def pitido(self) -> None:
-        """Dos tonos cortos ascendentes: "te escucho"."""
+    def pitido(self, subiendo: bool = True) -> None:
+        """Dos tonos cortos: subiendo es "te escucho"; bajando, "me quedo en pausa"."""
         frecuencia = 24000
         partes = []
-        for nota in (880, 1320):
+        for nota in (880, 1320) if subiendo else (1100, 740):
             t = np.arange(int(frecuencia * 0.08)) / frecuencia
             envolvente = np.minimum(1, np.minimum(t, t[::-1]) * 200)  # sin chasquidos al empezar y terminar
             partes.append(np.sin(2 * np.pi * nota * t) * envolvente * 0.25)
