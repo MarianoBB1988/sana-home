@@ -17,7 +17,8 @@ def _casa() -> str:
     try:
         lista = "; ".join(f"{d['nombre']} ({d['entity_id']}): {d['estado']}" for d in ha.dispositivos())
     except Exception:
-        return "Podés controlar la casa con las herramientas; usá listar_dispositivos para ver qué hay."
+        return ("Home Assistant no responde en este momento: si piden controlar algo de la casa, decí en una frase "
+                "que ahora no te podés conectar con la casa, sin usar herramientas de la casa.")
     return (
         f"Dispositivos de la casa ahora (nombre, entity_id y estado): {lista or 'ninguno'}. "
         "Para prender o apagar usá directamente controlar_dispositivo con ese entity_id; "

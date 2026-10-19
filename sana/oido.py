@@ -15,8 +15,8 @@ from . import config
 
 FRECUENCIA = 16000
 BLOQUE = 1600  # 100 ms
-SILENCIO_FINAL = 1.2  # segundos de silencio que cierran la frase
-MAX_ESPERA = 8.0  # segundos esperando que empiece a hablar
+SILENCIO_FINAL = 0.9  # segundos de silencio que cierran la frase
+MAX_ESPERA = 6.0  # segundos esperando que empiece a hablar
 MAX_FRASE = 20.0
 PREVIO = 3  # bloques de antes de detectar la voz que se agregan al inicio (para no cortar la primera sílaba)
 
@@ -59,7 +59,11 @@ class Microfono:
             self._cola.get_nowait()
 
     def actualizar_ruido(self, bloque: np.ndarray) -> None:
-        self.ruido = 0.95 * self.ruido + 0.05 * _rms(bloque)
+        """Aprende el ruido de fondo solo con bloques tranquilos: si contara la voz (por ejemplo al decir
+        "Hola Sana"), el umbral subiría y después no detectaría el pedido."""
+        nivel = _rms(bloque)
+        if nivel < self.ruido * 2:
+            self.ruido = 0.95 * self.ruido + 0.05 * nivel
 
 
 class PalabraClave:
