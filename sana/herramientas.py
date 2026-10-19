@@ -183,13 +183,16 @@ def definiciones() -> list[dict]:
             ),
             _funcion(
                 "controlar_spotify",
-                "Controla lo que suena en Spotify: pausar, reanudar, siguiente, anterior, aleatorio o volumen.",
+                "Controla lo que suena en Spotify: pausar, reanudar, siguiente o anterior canción, aleatorio, volumen, "
+                "o adelantar/retroceder dentro de la canción.",
                 {
                     "accion": {
                         "type": "string",
-                        "enum": ["pausar", "reanudar", "siguiente", "anterior", "aleatorio", "volumen", "subir_volumen", "bajar_volumen"],
+                        "enum": ["pausar", "reanudar", "siguiente", "anterior", "aleatorio", "volumen", "subir_volumen",
+                                 "bajar_volumen", "adelantar", "retroceder"],
                     },
                     "volumen": {"type": "integer", "description": "0 a 100, solo para accion=volumen"},
+                    "segundos": {"type": "integer", "description": "para adelantar/retroceder; 30 si no lo dicen"},
                 },
                 ["accion"],
             ),

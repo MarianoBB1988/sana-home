@@ -133,8 +133,17 @@ def conversar(cerebro, voz, mic, marcar=_sin_pantalla) -> None:
         espera = SEGUIMIENTO
 
 
+def restaurar_musica(bajando: threading.Thread | None) -> None:
+    """Devuelve la música a su volumen, esperando primero a que haya terminado de bajarla (si no, quedaría baja)."""
+    from sana import spotify
+
+    if bajando:
+        bajando.join(timeout=10)
+    spotify.atenuador.restaurar()
+
+
 def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
-    from sana import oido
+    from sana import oido, spotify
 
     marcar = pantalla.estado if pantalla else _sin_pantalla
 
@@ -146,6 +155,7 @@ def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
             print(f"(No encontré el modelo de Vosk en {config.MODELO_VOSK}: uso Enter en lugar de la palabra clave.)")
 
     saludos = Saludos(voz)
+    bajando = None
     with oido.Microfono() as mic:
         if palabra:
             print(f'{config.NOMBRE} escuchando. Decí "{palabra.palabra.capitalize()}" y después tu pedido (Ctrl+C para salir).\n', flush=True)
@@ -159,12 +169,16 @@ def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
                     palabra.esperar(mic)
                 else:
                     input("[Enter para hablar]")
+                # La música baja mientras Sana escucha (en paralelo al saludo, para no demorarlo)
+                bajando = threading.Thread(target=spotify.atenuador.bajar, daemon=True)
+                bajando.start()
                 marcar("hablando")
                 saludos.decir()
                 time.sleep(0.3)  # el parlante sigue sonando un instante después de terminar
                 mic.descartar()  # que el saludo no se tome como el comienzo del pedido
                 conversar(cerebro, voz, mic, marcar)
             except (EOFError, KeyboardInterrupt):
+                restaurar_musica(bajando)
                 break
             except Exception as e:  # un error en una charla (internet, Groq...) no apaga a Sana
                 print(f"  (error: {e})", flush=True)
@@ -172,6 +186,7 @@ def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
                     voz.decir("Perdón, tuve un problema. Probá de nuevo en un momento.")
                 except Exception:
                     pass
+            restaurar_musica(bajando)
             marcar("pausa")
             try:
                 voz.sonido_apagado()  # "me quedo en pausa"

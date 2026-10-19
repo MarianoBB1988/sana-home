@@ -3,6 +3,7 @@
 Spotify reproduce en un "dispositivo Spotify Connect": la app abierta en la compu o el celular, o el mini PC
 con raspotify/spotifyd. La primera vez hay que autorizar a Sana: python main.py --conectar-spotify
 """
+import threading
 import time
 from functools import lru_cache
 
@@ -109,10 +110,80 @@ def poner(busqueda: str, tipo: str = "cualquiera") -> str:
     return _confirmar(dispositivo, detalle)
 
 
-def controlar(accion: str, volumen: int | None = None) -> str:
+class Atenuador:
+    """Baja la música mientras Sana escucha y habla, y la devuelve a su volumen al terminar la charla."""
+
+    PROPORCION = 0.25  # la música queda al 25 % de su volumen
+    MINIMO = 5
+
+    def __init__(self):
+        self._guardado: tuple[str, int] | None = None  # (dispositivo, volumen original)
+        self._bloqueo = threading.Lock()
+
+    def bajar(self) -> None:
+        if not autorizado():
+            return
+        try:
+            actual = _cliente().current_playback()
+            if not actual or not actual.get("is_playing"):
+                return
+            dispositivo = actual["device"]
+            volumen = dispositivo.get("volume_percent")
+            if volumen is None or volumen <= self.MINIMO:
+                return
+            with self._bloqueo:
+                self._guardado = (dispositivo["id"], volumen)
+            _cliente().volume(max(self.MINIMO, round(volumen * self.PROPORCION)), device_id=dispositivo["id"])
+        except Exception as e:
+            print(f"  (no pude bajar la música: {e})", flush=True)
+
+    def olvidar(self) -> None:
+        """El usuario eligió un volumen durante la charla: al terminar no hay que pisarlo con el anterior."""
+        with self._bloqueo:
+            self._guardado = None
+
+    def restaurar(self) -> None:
+        with self._bloqueo:
+            guardado, self._guardado = self._guardado, None
+        if not guardado:
+            return
+        dispositivo, volumen = guardado
+        try:
+            _cliente().volume(volumen, device_id=dispositivo)
+        except Exception as e:
+            print(f"  (no pude restaurar el volumen de la música: {e})", flush=True)
+        threading.Thread(target=self._verificar, args=(dispositivo, volumen), daemon=True).start()
+
+    def _verificar(self, dispositivo: str, volumen: int) -> None:
+        """Spotify refleja los cambios con ~1 s de demora y a veces pierde la orden en un cambio de tema: se
+        comprueba y, si hace falta, se reintenta una vez."""
+        time.sleep(2)
+        try:
+            actual = _cliente().current_playback()
+            if actual and actual["device"]["id"] == dispositivo and actual["device"].get("volume_percent") != volumen:
+                with self._bloqueo:
+                    if self._guardado:  # empezó otra charla y volvió a bajarla: no tocar
+                        return
+                _cliente().volume(volumen, device_id=dispositivo)
+        except Exception:
+            pass
+
+
+atenuador = Atenuador()
+
+
+def controlar(accion: str, volumen: int | None = None, segundos: int | None = None) -> str:
     sp = _cliente()
     dispositivo = _dispositivo()
     id_ = dispositivo["id"]
+    if accion in ("adelantar", "retroceder"):
+        actual = sp.current_playback()
+        if not actual or not actual.get("item"):
+            return "No está sonando nada para adelantar."
+        salto = (segundos or 30) * 1000 * (1 if accion == "adelantar" else -1)
+        posicion = max(0, min(actual["progress_ms"] + salto, actual["item"]["duration_ms"] - 1000))
+        sp.seek_track(posicion, device_id=id_)
+        return f"Listo: {accion} {abs(salto) // 1000} segundos."
     if accion == "pausar":
         sp.pause_playback(device_id=id_)
     elif accion == "reanudar":
@@ -124,7 +195,10 @@ def controlar(accion: str, volumen: int | None = None) -> str:
     elif accion == "aleatorio":
         sp.shuffle(True, device_id=id_)
     elif accion in ("volumen", "subir_volumen", "bajar_volumen"):
-        actual = dispositivo.get("volume_percent") or 50
+        atenuador_activo = atenuador._guardado and atenuador._guardado[0] == id_
+        # Si la música está atenuada porque Sana escucha, "subí" o "bajá" parten del volumen real, no del atenuado
+        actual = atenuador._guardado[1] if atenuador_activo else (dispositivo.get("volume_percent") or 50)
+        atenuador.olvidar()
         if accion == "subir_volumen":
             volumen = min(100, actual + 15)
         elif accion == "bajar_volumen":
