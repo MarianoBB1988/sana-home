@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sana</title>
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #0e0f0d;  /* gris casi negro */
+    cursor: none;
+  }
+  body { display: grid; place-items: center; }
+  #animacion {
+    width: min(72vmin, 720px); aspect-ratio: 1;
+    transition: opacity .8s ease, transform .8s ease, filter .8s ease;
+  }
+  #animacion svg { width: 100%; height: 100%; display: block; }
+  /* En pausa: quieta, más chica y apagada */
+  body.pausa #animacion { opacity: .28; transform: scale(.92); filter: saturate(.6); }
+  body:not(.pausa) #animacion { opacity: 1; transform: scale(1); }
+</style>
+</head>
+<body class="pausa">
+<div id="animacion" aria-label="Sana"></div>
+<script>
+  // El SVG va dentro de la página (no como <img>) para poder pausar y reanudar sus animaciones SMIL.
+  let svg = null;
+  let estado = "pausa";
+
+  function aplicar() {
+    document.body.classList.toggle("pausa", estado === "pausa");
+    if (!svg) return;
+    if (estado === "pausa") svg.pauseAnimations(); else svg.unpauseAnimations();
+  }
+
+  fetch("/animacion.svg")
+    .then((r) => r.text())
+    .then((texto) => {
+      document.getElementById("animacion").innerHTML = texto;
+      svg = document.querySelector("#animacion svg");
+      aplicar();
+    });
+
+  // Sana avisa sus cambios de estado al instante; si se corta, el navegador reconecta solo.
+  const eventos = new EventSource("/estado");
+  eventos.onmessage = (e) => { estado = e.data; aplicar(); };
+</script>
+</body>
+</html>

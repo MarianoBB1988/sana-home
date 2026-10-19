@@ -24,6 +24,8 @@ python -m piper.download_voices --download-dir voces es_ES-davefx-medium
 copy .env.example .env      # y poné tu GROQ_API_KEY (https://console.groq.com/keys)
 
 python main.py               # manos libres: decís "Sana" y tu pedido (así corre en el mini PC)
+python main.py --pantalla    # igual, con la animación (Glow IA Animation.svg) a pantalla completa:
+                             # se mueve cuando Sana está activa y queda quieta en pausa (salir: Alt+F4 o Ctrl+C)
 python main.py --enter       # igual, pero apretando Enter en lugar de decir "Sana"
 python main.py --texto       # conversar escribiendo en la consola
 python main.py --web         # página web opcional: chat, clima y ajustes

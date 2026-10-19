@@ -1,6 +1,7 @@
 """Sana: asistente de voz para el hogar.
 
     python main.py               modo voz: decís "Sana" y tu pedido (manos libres, en segundo plano)
+    python main.py --pantalla    igual, con la animación de Sana a pantalla completa (se mueve cuando está activa)
     python main.py --enter       modo voz apretando Enter en lugar de decir "Sana"
     python main.py --texto       modo texto: escribís en la consola
     python main.py --web         interfaz web en http://IP-DE-ESTA-PC:8000
@@ -96,17 +97,24 @@ class Saludos:
         self.voz.decir(self.ultimo)
 
 
-def conversar(cerebro, voz, mic) -> None:
-    """Una charla: escucha el pedido, responde, y sigue escuchando un rato por si hay otra pregunta."""
+def _sin_pantalla(_estado: str) -> None:
+    pass
+
+
+def conversar(cerebro, voz, mic, marcar=_sin_pantalla) -> None:
+    """Una charla: escucha el pedido, responde, y sigue escuchando un rato por si hay otra pregunta.
+    marcar(estado) avisa a la pantalla: escuchando, pensando o hablando."""
     from sana import oido
 
     espera = oido.MAX_ESPERA
     ruidos = 0
     while True:
+        marcar("escuchando")
         print(f"  Escuchando... ({espera:.0f} s)", flush=True)
         wav = oido.grabar_frase(mic, max_espera=espera)
         if not wav:
             return
+        marcar("pensando")
         texto = oido.transcribir(cerebro.cliente, wav)
         if not texto:  # era ruido: una sola oportunidad más, para no quedar dando vueltas con un ruido constante
             ruidos += 1
@@ -118,14 +126,17 @@ def conversar(cerebro, voz, mic) -> None:
         print(f"Vos: {texto}", flush=True)
         respuesta = cerebro.responder(texto, avisador(voz))
         print(f"{config.NOMBRE}: {respuesta}", flush=True)
+        marcar("hablando")
         voz.decir(respuesta)
         time.sleep(0.3)
         mic.descartar()  # lo que el micrófono escuchó mientras Sana hablaba era ella misma
         espera = SEGUIMIENTO
 
 
-def modo_voz(cerebro, voz, con_enter: bool) -> None:
+def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
     from sana import oido
+
+    marcar = pantalla.estado if pantalla else _sin_pantalla
 
     palabra = None
     if not con_enter:
@@ -142,15 +153,17 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
             print(f"{config.NOMBRE} en modo voz. Apretá Enter y hablá (Ctrl+C para salir).\n")
         while True:
             try:
+                marcar("pausa")
                 if palabra:
                     print(f'En pausa. Decí "{palabra.palabra.capitalize()}" para hablar.', flush=True)
                     palabra.esperar(mic)
                 else:
                     input("[Enter para hablar]")
+                marcar("hablando")
                 saludos.decir()
                 time.sleep(0.3)  # el parlante sigue sonando un instante después de terminar
                 mic.descartar()  # que el saludo no se tome como el comienzo del pedido
-                conversar(cerebro, voz, mic)
+                conversar(cerebro, voz, mic, marcar)
             except (EOFError, KeyboardInterrupt):
                 break
             except Exception as e:  # un error en una charla (internet, Groq...) no apaga a Sana
@@ -159,6 +172,7 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
                     voz.decir("Perdón, tuve un problema. Probá de nuevo en un momento.")
                 except Exception:
                     pass
+            marcar("pausa")
             try:
                 voz.sonido_apagado()  # "me quedo en pausa"
             except Exception as e:
@@ -171,6 +185,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=f"{config.NOMBRE}, asistente de voz para el hogar")
     p.add_argument("--texto", action="store_true", help="conversar escribiendo")
     p.add_argument("--enter", action="store_true", help="modo voz con Enter en lugar de la palabra clave")
+    p.add_argument("--pantalla", action="store_true", help="mostrar la animación de Sana a pantalla completa")
     p.add_argument("--mudo", action="store_true", help="en modo texto, no leer las respuestas en voz alta")
     p.add_argument("--web", action="store_true", help="servir la interfaz web en la red local")
     p.add_argument("--puerto", type=int, default=8000, help="puerto de la interfaz web (por defecto 8000)")
@@ -208,8 +223,19 @@ def main() -> None:
     voz = Voz()
     if args.texto:
         modo_texto(cerebro, voz, hablar=not args.mudo)
-    else:
-        modo_voz(cerebro, voz, con_enter=args.enter)
+        return
+
+    pantalla = None
+    if args.pantalla:
+        from sana.pantalla import Pantalla
+
+        pantalla = Pantalla()
+        pantalla.abrir()
+    try:
+        modo_voz(cerebro, voz, con_enter=args.enter, pantalla=pantalla)
+    finally:
+        if pantalla:
+            pantalla.cerrar()
 
 
 if __name__ == "__main__":
