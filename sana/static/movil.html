@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0e0f0d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Sana</title>
+<link rel="manifest" href="/manifest-movil.json">
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<style>
+  @font-face { font-family: "Inter"; src: url(/fuentes/inter-400.woff2) format("woff2"); }
+  @font-face { font-family: "JetBrains Mono"; src: url(/fuentes/jetbrains-mono-400.woff2) format("woff2"); }
+
+  :root {
+    --fondo: #0e0f0d;
+    --texto: rgba(226, 232, 255, .82);
+    --tenue: rgba(150, 170, 220, .55);
+    --cian: #5ad8ff;
+    --azul: #3b6bff;
+    --violeta: #a259ff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 38%, #14161d 0%, var(--fondo) 65%);
+    color: var(--texto); font-family: "Inter", system-ui, sans-serif;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  .app {
+    height: 100dvh; display: grid; grid-template-rows: auto 1fr auto auto;
+    padding: max(14px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+  }
+
+  /* Cabecera mínima tipo HUD */
+  .hud {
+    display: flex; justify-content: space-between; align-items: center;
+    font: 400 11px/1 "JetBrains Mono", monospace; letter-spacing: .35em; text-transform: uppercase; color: var(--tenue);
+  }
+  .conexion { display: flex; align-items: center; gap: 8px; }
+  .conexion i { width: 6px; height: 6px; border-radius: 50%; background: var(--cian); box-shadow: 0 0 8px var(--cian); }
+  .conexion.mal i { background: #ff6b6b; box-shadow: 0 0 8px #ff6b6b; }
+
+  /* ---------- La esfera (se toca para hablar) ---------- */
+  .centro { display: grid; place-items: center; min-height: 0; }
+  #esfera {
+    position: relative; width: min(78vw, 46vh, 420px); aspect-ratio: 1; border: none; padding: 0; background: none;
+    cursor: pointer; outline: none;
+  }
+  #animacion { width: 100%; height: 100%; transition: opacity .8s ease, transform .8s ease, filter .8s ease; }
+  #animacion svg, #animacion canvas { width: 100%; height: 100%; display: block; }
+  body.espera #animacion { opacity: .35; transform: scale(.9); filter: saturate(.6); }
+  #esfera:active #animacion { transform: scale(.86); }
+  /* Anillo que late invitando a tocar */
+  #esfera::after {
+    content: ""; position: absolute; inset: 14%; border-radius: 50%;
+    border: 1px solid rgba(90, 216, 255, .35); opacity: 0; pointer-events: none;
+  }
+  body.espera #esfera::after { animation: invitar 2.8s ease-out infinite; }
+  @keyframes invitar { 0% { opacity: .7; transform: scale(.85); } 100% { opacity: 0; transform: scale(1.25); } }
+
+  /* ---------- Subtítulos ---------- */
+  .subtitulos {
+    min-height: 0; max-height: 26vh; overflow-y: auto; text-align: center;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 4px 12px; scrollbar-width: none;
+  }
+  .subtitulos::-webkit-scrollbar { display: none; }
+  .subtitulos .quien { font: 400 10px/1 "JetBrains Mono", monospace; letter-spacing: .35em; color: var(--tenue); text-transform: uppercase; }
+  .subtitulos .vos { color: var(--tenue); font-size: 15px; }
+  .subtitulos .sana { font-size: clamp(17px, 4.6vw, 21px); line-height: 1.4; }
+  .subtitulos > * { animation: entrar .6s ease both; }
+  @keyframes entrar { from { opacity: 0; filter: blur(6px); transform: translateY(6px); } }
+
+  /* ---------- Zona de abajo: invitación en espera / estado cuando está activa ---------- */
+  .abajo { position: relative; height: 92px; }
+  .mensaje, .estado {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    transition: opacity .7s ease, filter .7s ease, transform .7s ease;
+  }
+  body:not(.espera) .mensaje { opacity: 0; filter: blur(8px); transform: translateY(8px); pointer-events: none; }
+  body.espera .estado { opacity: 0; filter: blur(8px); transform: translateY(-8px); }
+
+  .etiqueta { font: 400 11px/1 "JetBrains Mono", monospace; letter-spacing: .35em; text-transform: uppercase; color: var(--tenue); display: flex; align-items: center; gap: 10px; }
+  .punto { width: 6px; height: 6px; border-radius: 50%; background: var(--cian); box-shadow: 0 0 10px var(--cian); animation: latido 2.2s ease-in-out infinite; }
+  @keyframes latido { 50% { opacity: .25; transform: scale(.7); } }
+
+  .frase { margin: 0; font-size: clamp(18px, 5.2vw, 24px); text-align: center; }
+  .frase span {
+    display: inline-block; opacity: 0;
+    background-image: linear-gradient(100deg, transparent 42%, rgba(255, 255, 255, .95) 50%, transparent 58%), linear-gradient(var(--texto), var(--texto));
+    background-size: 260% 100%, 100% 100%; background-position: 160% 0, 0 0; background-repeat: no-repeat;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: aparecer 1.1s cubic-bezier(.2, .7, .2, 1) forwards, brillo 6s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 120ms + 300ms), calc(var(--i) * 60ms + 2.4s);
+  }
+  .frase .clave {
+    padding: 0 .1em; letter-spacing: .05em;
+    background: linear-gradient(90deg, var(--cian), var(--azul), var(--violeta), var(--cian)) 0 0 / 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 12px rgba(70, 130, 255, .55));
+    animation: aparecer 1.1s cubic-bezier(.2, .7, .2, 1) forwards, fluir 5s linear infinite;
+    animation-delay: calc(var(--i) * 120ms + 300ms), 0s;
+  }
+  @keyframes aparecer { from { opacity: 0; filter: blur(10px); transform: translateY(12px); } to { opacity: 1; filter: blur(0); transform: none; } }
+  @keyframes brillo { 0%, 55% { background-position: 160% 0, 0 0; } 100% { background-position: -60% 0, 0 0; } }
+  @keyframes fluir { to { background-position: 300% 0; } }
+
+  .barras { display: flex; gap: 6px; height: 30px; align-items: center; }
+  .barras i {
+    width: 4px; height: 100%; border-radius: 4px; background: linear-gradient(var(--cian), var(--azul), var(--violeta));
+    box-shadow: 0 0 10px rgba(80, 150, 255, .5); transform: scaleY(.25);
+    animation: ecualizador 1s ease-in-out infinite; animation-delay: calc(var(--i) * -170ms);
+  }
+  @keyframes ecualizador { 50% { transform: scaleY(1); } }
+  body[data-estado="pensando"] .barras i { animation: pensar 1.1s ease-in-out infinite; animation-delay: calc(var(--i) * 120ms); }
+  @keyframes pensar { 0%, 100% { transform: scaleY(.2); opacity: .4; } 40% { transform: scaleY(.55); opacity: 1; } }
+  body[data-estado="hablando"] .barras i { animation-duration: .6s; }
+  .estado-texto { font: 400 12px/1 "JetBrains Mono", monospace; letter-spacing: .4em; text-transform: uppercase; color: var(--tenue); display: flex; }
+  #estado-nombre { transition: opacity .3s ease, filter .3s ease; }
+  #estado-nombre.cambiando { opacity: 0; filter: blur(4px); }
+  .puntos b { font-weight: 400; opacity: 0; animation: punto 1.6s ease-in-out infinite; }
+  .puntos b:nth-child(2) { animation-delay: .25s; }
+  .puntos b:nth-child(3) { animation-delay: .5s; }
+  @keyframes punto { 0%, 100% { opacity: 0; } 30%, 60% { opacity: 1; } }
+
+  .aviso { font-size: 13px; color: #ffb3b3; text-align: center; min-height: 18px; padding-top: 6px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    .frase span { opacity: 1; }
+  }
+</style>
+</head>
+<body class="espera" data-estado="espera">
+<div class="app">
+  <div class="hud">
+    <span>SanaHome</span>
+    <span class="conexion" id="conexion"><i></i>En línea</span>
+  </div>
+
+  <div class="centro">
+    <button id="esfera" aria-label="Tocá para hablar con Sana"><div id="animacion" aria-hidden="true"></div></button>
+  </div>
+
+  <div class="subtitulos" id="subtitulos" aria-live="polite"></div>
+
+  <div>
+    <div class="abajo">
+      <div class="mensaje" id="mensaje">
+        <div class="etiqueta"><span class="punto"></span>Lista</div>
+        <p class="frase">
+          <span style="--i:0">Tocá</span> <span style="--i:1">la</span> <span style="--i:2">esfera</span>
+          <span style="--i:3">para</span> <span style="--i:4">hablar</span> <span style="--i:5">con</span>
+          <span class="clave" style="--i:6">Sana</span>
+        </p>
+      </div>
+      <div class="estado">
+        <div class="barras"><i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i></div>
+        <div class="estado-texto"><span id="estado-nombre">Escuchando</span><span class="puntos"><b>.</b><b>.</b><b>.</b></span></div>
+      </div>
+    </div>
+    <div class="aviso" id="aviso" role="status"></div>
+  </div>
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+const SEGUIMIENTO = 5000;  // ms para seguir hablando después de una respuesta, sin volver a tocar
+
+// ---------- Sesión de charla (una por celular) ----------
+let sesion;
+try { sesion = localStorage.getItem("sana.sesion"); } catch {}
+if (!sesion) {
+  sesion = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try { localStorage.setItem("sana.sesion", sesion); } catch {}
+}
+
+async function api(ruta, cuerpo) {
+  const opciones = cuerpo instanceof FormData ? { method: "POST", body: cuerpo }
+    : cuerpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) } : {};
+  const r = await fetch(ruta, opciones);
+  if (!r.ok) {
+    let detalle = r.statusText;
+    try { detalle = (await r.json()).detail || detalle; } catch {}
+    throw new Error(detalle);
+  }
+  $("conexion").classList.remove("mal");
+  return r;
+}
+
+// ---------- Estados visuales (los mismos de la pantalla) ----------
+const NOMBRES = { escuchando: "Escuchando", pensando: "Pensando", hablando: "Hablando" };
+let estado = "espera";
+let control = null;  // reproducir/pausar la animación
+let cambioPendiente = null;
+
+function ponerEstado(nuevo) {
+  if (nuevo === "espera" && estado !== "espera") {
+    const m = $("mensaje");
+    m.replaceWith(m.cloneNode(true));  // la frase vuelve a entrar con su animación
+  }
+  estado = nuevo;
+  document.body.classList.toggle("espera", nuevo === "espera");
+  document.body.dataset.estado = nuevo;
+  const nombre = NOMBRES[nuevo];
+  const el = $("estado-nombre");
+  if (nombre && el.textContent !== nombre) {
+    clearTimeout(cambioPendiente);
+    el.classList.add("cambiando");
+    cambioPendiente = setTimeout(() => { el.textContent = nombre; el.classList.remove("cambiando"); }, 300);
+  }
+  if (control) nuevo === "espera" ? control.pausar() : control.reproducir();
+}
+
+function avisar(texto) {
+  $("aviso").textContent = texto;
+  if (texto) setTimeout(() => { if ($("aviso").textContent === texto) $("aviso").textContent = ""; }, 6000);
+}
+
+function subtitulo(quien, texto) {
+  const caja = $("subtitulos");
+  if (quien === "vos") caja.replaceChildren();  // cada pregunta empieza una tarjeta nueva
+  const etiqueta = document.createElement("div");
+  etiqueta.className = "quien";
+  etiqueta.textContent = quien === "vos" ? "Vos" : "Sana";
+  const p = document.createElement("div");
+  p.className = quien;
+  p.textContent = texto;
+  caja.append(etiqueta, p);
+  caja.scrollTop = caja.scrollHeight;
+  return p;
+}
+
+// ---------- La animación (SVG o Lottie, igual que la pantalla) ----------
+async function cargarAnimacion() {
+  const info = await (await fetch("/animacion-info")).json();
+  const contenedor = $("animacion");
+  if (info.tipo === "svg") {
+    contenedor.innerHTML = await (await fetch(info.url)).text();
+    const svg = contenedor.querySelector("svg");
+    control = { reproducir: () => svg.unpauseAnimations(), pausar: () => svg.pauseAnimations() };
+  } else {
+    const { DotLottie } = await import("/vendor/dotlottie/index.js");
+    DotLottie.setWasmUrl("/vendor/dotlottie/dotlottie-player.wasm");
+    const canvas = document.createElement("canvas");
+    contenedor.append(canvas);
+    const lottie = new DotLottie({ canvas, src: info.url, loop: true, autoplay: false,
+      renderConfig: { devicePixelRatio: window.devicePixelRatio || 1 } });
+    control = { reproducir: () => lottie.play(), pausar: () => lottie.pause() };
+  }
+  ponerEstado(estado);
+}
+cargarAnimacion();
+
+// ---------- Voz de Sana por el celular, frase por frase ----------
+const reproductor = new Audio();
+let turno = 0;  // cada pregunta nueva corta lo que estaba sonando
+
+function desbloquearAudio() {  // iPhone/Android solo reproducen audio después de un toque
+  if (reproductor.dataset.listo) return;
+  reproductor.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
+  reproductor.play().then(() => { reproductor.dataset.listo = "1"; }).catch(() => {});
+}
+
+async function hablar(texto, miTurno) {
+  const frases = texto.split(/(?<=[.!?…:;])\s+/).filter((f) => f.trim());
+  const pedidos = [];
+  const pedir = (i) => pedidos[i] ??= api("/api/voz", { texto: frases[i] }).then((r) => r.blob()).catch(() => null);
+  if (frases.length) pedir(0);
+  for (let i = 0; i < frases.length; i++) {
+    const audio = await pedir(i);
+    if (miTurno !== turno) return false;
+    if (i + 1 < frases.length) pedir(i + 1);
+    if (!audio) continue;
+    const url = URL.createObjectURL(audio);
+    reproductor.src = url;
+    await new Promise((listo) => {
+      reproductor.onended = reproductor.onerror = reproductor.onpause = listo;
+      reproductor.play().catch(listo);
+    });
+    URL.revokeObjectURL(url);
+    if (miTurno !== turno) return false;
+  }
+  return true;
+}
+
+// ---------- Micrófono: graba y corta solo tras un silencio ----------
+let grabadora = null;
+
+async function escuchar(maxEspera) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  const partes = [];
+  grabadora = new MediaRecorder(stream);
+  grabadora.ondataavailable = (e) => partes.push(e.data);
+  const contexto = new AudioContext();
+  const analizador = contexto.createAnalyser();
+  analizador.fftSize = 1024;
+  contexto.createMediaStreamSource(stream).connect(analizador);
+  const muestras = new Float32Array(analizador.fftSize);
+  const volumen = () => { analizador.getFloatTimeDomainData(muestras); return Math.sqrt(muestras.reduce((s, x) => s + x * x, 0) / muestras.length); };
+
+  return new Promise((resolver) => {
+    let ruido = 0, calibraciones = 0, hablo = false, ultimaVoz = 0, seguidos = 0;
+    const inicio = performance.now();
+    const vigilar = setInterval(() => {
+      const v = volumen(), ahora = performance.now();
+      if (calibraciones < 4) { ruido += v / 4; calibraciones++; return; }
+      if (v > Math.max(ruido * 2.5, 0.012)) { seguidos++; if (seguidos >= 2) { hablo = true; ultimaVoz = ahora; } } else seguidos = 0;
+      if ((hablo && ahora - ultimaVoz > 900) || (!hablo && ahora - inicio > maxEspera) || ahora - inicio > 20000) grabadora?.stop();
+    }, 100);
+    grabadora.onstop = () => {
+      clearInterval(vigilar);
+      contexto.close();
+      stream.getTracks().forEach((t) => t.stop());
+      grabadora = null;
+      if (!hablo) return resolver(null);
+      const tipo = partes[0]?.type || "audio/webm";
+      const extension = tipo.includes("mp4") ? "m4a" : tipo.includes("ogg") ? "ogg" : "webm";
+      resolver(new File(partes, "voz." + extension, { type: tipo }));
+    };
+    grabadora.start();
+  });
+}
+
+// ---------- Una charla: escuchar, pensar, responder y seguir escuchando un rato ----------
+async function conversar() {
+  const miTurno = ++turno;
+  let maxEspera = 6000;
+  while (miTurno === turno) {
+    ponerEstado("escuchando");
+    let audio;
+    try { audio = await escuchar(maxEspera); }
+    catch { avisar("No tengo permiso para usar el micrófono."); break; }
+    if (miTurno !== turno) return;
+    if (!audio) break;  // silencio: vuelve a la espera
+
+    ponerEstado("pensando");
+    const datos = new FormData();
+    datos.append("audio", audio);
+    let texto = "";
+    try { texto = (await (await api("/api/transcribir", datos)).json()).texto; }
+    catch (e) { avisar("No pude entender el audio: " + e.message); break; }
+    if (!texto) { maxEspera = SEGUIMIENTO; continue; }  // era ruido: una oportunidad más
+    subtitulo("vos", texto);
+
+    try {
+      const r = await api("/api/chat", { sesion, texto });
+      const lector = r.body.getReader();
+      const decodificador = new TextDecoder();
+      let pendiente = "", respuesta = null;
+      while (respuesta === null) {
+        const { value, done } = await lector.read();
+        if (done) break;
+        pendiente += decodificador.decode(value, { stream: true });
+        const lineas = pendiente.split("\n");
+        pendiente = lineas.pop();
+        for (const linea of lineas.filter(Boolean)) {
+          const ev = JSON.parse(linea);
+          if (ev.tipo === "aviso") { ponerEstado("hablando"); hablar(ev.texto, miTurno); }
+          else if (ev.tipo === "respuesta") respuesta = ev.texto;
+          else throw new Error(ev.texto);
+        }
+      }
+      if (respuesta === null) throw new Error("se cortó la conexión");
+      subtitulo("sana", respuesta);
+      ponerEstado("hablando");
+      if (!(await hablar(respuesta, miTurno))) return;
+    } catch (e) {
+      avisar("No pude responder: " + e.message);
+      break;
+    }
+    maxEspera = SEGUIMIENTO;
+  }
+  if (miTurno === turno) ponerEstado("espera");
+}
+
+// ---------- Tocar la esfera ----------
+$("esfera").addEventListener("click", () => {
+  if (!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder)) {
+    avisar("Para usar el micrófono abrí Sana con https:// (python main.py --web --https).");
+    return;
+  }
+  desbloquearAudio();
+  if (estado === "escuchando" && grabadora) { grabadora.stop(); return; }  // tocar mientras escucha: "listo"
+  if (estado === "hablando" || estado === "pensando") { turno++; reproductor.pause(); }  // interrumpir
+  conversar();
+});
+
+// Si el servidor no responde, el punto de conexión se pone rojo
+setInterval(() => fetch("/api/estado").then((r) => $("conexion").classList.toggle("mal", !r.ok))
+  .catch(() => $("conexion").classList.add("mal")), 15000);
+</script>
+</body>
+</html>

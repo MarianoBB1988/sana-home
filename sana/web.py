@@ -183,4 +183,24 @@ def inicio():
     return FileResponse(ESTATICOS / "index.html")
 
 
+@app.get("/movil")
+def movil():
+    """Sana para el celular: la esfera animada; se toca para hablar (instalable en la pantalla de inicio)."""
+    return FileResponse(ESTATICOS / "movil.html")
+
+
+@app.get("/animacion-info")
+def animacion_info():
+    extension = config.ANIMACION.suffix.lower()
+    return {"tipo": "svg" if extension == ".svg" else "lottie", "url": f"/animacion{extension}"}
+
+
+@app.get("/animacion{extension}")
+def animacion(extension: str):
+    if extension.lower() != config.ANIMACION.suffix.lower() or not config.ANIMACION.exists():
+        raise HTTPException(404)
+    tipos = {".svg": "image/svg+xml", ".lottie": "application/zip", ".json": "application/json"}
+    return FileResponse(config.ANIMACION, media_type=tipos.get(extension.lower(), "application/octet-stream"))
+
+
 app.mount("/", StaticFiles(directory=ESTATICOS), name="estaticos")

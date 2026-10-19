@@ -29,6 +29,8 @@ python main.py --pantalla    # igual, con una animación a pantalla completa (Lo
 python main.py --enter       # igual, pero apretando Enter en lugar de decir "Sana"
 python main.py --texto       # conversar escribiendo en la consola
 python main.py --web         # página web opcional: chat, clima y ajustes
+python main.py --web --https # además, Sana para el celular en https://IP:8000/movil: se toca la esfera y se habla
+                             # (HTTPS hace falta para el micrófono; la 1.ª vez aceptá el aviso del certificado)
 python main.py --dispositivos  # ver micrófonos y parlantes; elegilos en .env (MICROFONO / PARLANTE)
 ```
 

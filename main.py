@@ -243,6 +243,7 @@ def main() -> None:
     p.add_argument("--mudo", action="store_true", help="en modo texto, no leer las respuestas en voz alta")
     p.add_argument("--web", action="store_true", help="servir la interfaz web en la red local")
     p.add_argument("--puerto", type=int, default=8000, help="puerto de la interfaz web (por defecto 8000)")
+    p.add_argument("--https", action="store_true", help="con --web: HTTPS para poder usar el micrófono del celular")
     p.add_argument("--dispositivos", action="store_true", help="listar micrófonos y parlantes")
     p.add_argument("--probar-microfono", action="store_true", help="medir si el micrófono capta lo suficiente")
     p.add_argument("--conectar-spotify", action="store_true", help="autorizar a Sana a usar tu Spotify (una sola vez)")
@@ -269,18 +270,24 @@ def main() -> None:
         sys.exit("Falta GROQ_API_KEY en el archivo .env (copiá .env.example como .env).")
 
     if args.web:
-        import socket
-
         import uvicorn
 
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.connect(("8.8.8.8", 80))
-                ip = s.getsockname()[0]
-        except OSError:
-            ip = "localhost"
-        print(f"\n  {config.NOMBRE} Home: http://{ip}:{args.puerto}  (desde el celu o cualquier compu de la casa)\n")
-        uvicorn.run("sana.web:app", host="0.0.0.0", port=args.puerto, log_level="warning")
+        from sana import certificado
+
+        ip = certificado.ip_local()
+        tls = {}
+        if args.https:
+            cert, clave = certificado.asegurar()
+            tls = {"ssl_certfile": cert, "ssl_keyfile": clave}
+        esquema = "https" if args.https else "http"
+        print(f"\n  {config.NOMBRE} en el celular: {esquema}://{ip}:{args.puerto}/movil"
+              f"\n  Panel completo:      {esquema}://{ip}:{args.puerto}/")
+        if args.https:
+            print("  (la primera vez el navegador avisa 'conexión no privada': tocá Avanzado > Continuar)")
+        else:
+            print("  (para usar el micrófono del celular, arrancá con --https)")
+        print()
+        uvicorn.run("sana.web:app", host="0.0.0.0", port=args.puerto, log_level="warning", **tls)
         return
 
     from sana.cerebro import Cerebro
