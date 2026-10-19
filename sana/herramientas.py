@@ -1,5 +1,6 @@
 """Herramientas que el LLM puede usar. Cada una devuelve un texto que vuelve al modelo."""
 import json
+import random
 from datetime import datetime
 
 from groq import Groq
@@ -8,8 +9,29 @@ from . import ajustes, clima, config, homeassistant as ha
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
-# Lo que Sana dice mientras corre una herramienta lenta, para que la espera no sea en silencio.
-AVISOS = {"buscar_en_internet": "Dejame fijarme."}
+# Lo que Sana dice mientras corre una herramienta lenta, para que la espera no sea en silencio (va rotando).
+AVISOS = {
+    "buscar_en_internet": [
+        "Dejame fijarme.",
+        "Aguardá un segundo.",
+        "Ya me fijo.",
+        "Un momento, que lo busco.",
+        "Esperá que me fijo.",
+        "Ya te digo.",
+        "Dame un segundito.",
+    ],
+}
+_ultimo_aviso: dict[str, str] = {}
+
+
+def aviso(nombre: str) -> str | None:
+    """Una frase de espera para la herramienta, distinta de la última que se usó."""
+    frases = AVISOS.get(nombre)
+    if not frases:
+        return None
+    opciones = [f for f in frases if f != _ultimo_aviso.get(nombre)] or frases
+    _ultimo_aviso[nombre] = random.choice(opciones)
+    return _ultimo_aviso[nombre]
 
 
 def obtener_hora() -> str:

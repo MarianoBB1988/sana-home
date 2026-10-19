@@ -29,9 +29,10 @@ ACCIONES = {
 app = FastAPI(title=config.NOMBRE)
 groq = Groq(api_key=config.GROQ_API_KEY)
 voz = Voz()
-# Los avisos quedan en caché desde el arranque, así suenan al instante.
-for _aviso in herramientas.AVISOS.values():
-    threading.Thread(target=voz.audio, args=(_aviso,), daemon=True).start()
+# Los avisos ("Dejame fijarme", "Aguardá"...) se preparan desde el arranque, así suenan al instante.
+threading.Thread(
+    target=lambda: [voz.preparar(f) for lista in herramientas.AVISOS.values() for f in lista], daemon=True
+).start()
 conversaciones: dict[str, Cerebro] = {}  # una por navegador
 
 
@@ -71,8 +72,8 @@ def chat(m: Mensaje):
     eventos: queue.Queue = queue.Queue()
 
     def al_usar_herramienta(nombre: str) -> None:
-        aviso = herramientas.AVISOS.get(nombre)
-        if aviso and not avisado.is_set():
+        aviso = herramientas.aviso(nombre) if not avisado.is_set() else None
+        if aviso:
             avisado.set()
             eventos.put({"tipo": "aviso", "texto": aviso})
             if m.voz_en_casa:

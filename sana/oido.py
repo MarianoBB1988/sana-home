@@ -21,6 +21,8 @@ MAX_FRASE = 20.0
 PREVIO = 3  # bloques de antes de detectar la voz que se agregan al inicio (para no cortar la primera sílaba)
 INICIO_VOZ = 2  # bloques seguidos con sonido para considerar que empezó a hablar (un golpe o un pitido no alcanzan)
 ULTIMA_FRASE = config.RAIZ / "datos" / "ultima_frase.wav"  # el último audio enviado a Whisper, para diagnosticar
+# Palabras de uso diario parecidas a "sana" que no tienen que activarla aunque se digan solas
+PALABRAS_COMUNES = {"sala", "sara", "saga", "sapa", "rana", "lana", "cana", "mana", "nana", "gana", "pana", "sama"}
 CONFIANZA_MINIMA = -0.45  # avg_logprob de Whisper: por debajo es ruido que Whisper "transcribió" igual
 
 # Frases que Whisper inventa cuando solo hay ruido
@@ -90,6 +92,14 @@ class PalabraClave:
         self._patron = re.compile(rf"\b{p}\b{corrido}")
         self._vosk = vosk
 
+    def _parecida(self, texto: str) -> bool:
+        """Una frase cortita (1 o 2 palabras) con una palabra a una letra de distancia: "ana", "sano", "zana"...
+        Así no hace falta repetir "Sana" si Vosk la entendió mal, sin activarse con frases normales."""
+        palabras = texto.split()
+        return 0 < len(palabras) <= 2 and any(
+            len(p) >= 3 and p not in PALABRAS_COMUNES and _distancia(p, self.palabra) <= 1 for p in palabras
+        )
+
     def esperar(self, mic: Microfono) -> None:
         reconocedor = self._vosk.KaldiRecognizer(self.modelo, FRECUENCIA)
         while True:
@@ -97,10 +107,23 @@ class PalabraClave:
             mic.actualizar_ruido(bloque)
             if reconocedor.AcceptWaveform(bloque.tobytes()):
                 texto = json.loads(reconocedor.Result()).get("text", "")
-            else:
-                texto = json.loads(reconocedor.PartialResult()).get("partial", "")
-            if self._patron.search(texto):
+                if self._patron.search(texto) or self._parecida(texto):
+                    return
+                if texto:
+                    print(f"  (oí: {texto!r})", flush=True)
+            elif self._patron.search(json.loads(reconocedor.PartialResult()).get("partial", "")):
                 return
+
+
+def _distancia(a: str, b: str) -> int:
+    """Cantidad mínima de letras a cambiar, agregar o sacar para pasar de a a b (Levenshtein)."""
+    previa = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        actual = [i]
+        for j, cb in enumerate(b, 1):
+            actual.append(min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + (ca != cb)))
+        previa = actual
+    return previa[-1]
 
 
 def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None:

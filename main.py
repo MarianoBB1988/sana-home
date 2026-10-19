@@ -16,14 +16,15 @@ from sana import config
 
 
 def avisador(voz, hablar: bool = True):
-    """Devuelve un callback que dice "Dejame fijarme." (una sola vez) cuando Sana usa una herramienta lenta."""
-    from sana.herramientas import AVISOS
+    """Devuelve un callback que dice una frase de espera ("Dejame fijarme", "Aguardá un segundo"...), una sola vez
+    por pregunta, cuando Sana usa una herramienta lenta."""
+    from sana import herramientas
 
     avisado = threading.Event()
 
     def avisar(nombre: str) -> None:
-        aviso = AVISOS.get(nombre)
-        if aviso and not avisado.is_set():
+        aviso = herramientas.aviso(nombre) if not avisado.is_set() else None
+        if aviso:
             avisado.set()
             print(f"{config.NOMBRE}: {aviso}")
             if hablar:
@@ -70,13 +71,17 @@ class Saludos:
         threading.Thread(target=self._preparar, daemon=True).start()
 
     def _preparar(self) -> None:
-        from sana.voz import frases
+        from sana.herramientas import AVISOS
 
         for saludo in SALUDOS:
             try:
-                # La voz reproduce frase por frase: se preparan las partes ("¿Sí?" y "Decime.") y quedan en su caché
-                if all(self.voz.audio(parte) for parte in frases(saludo)):
+                if self.voz.preparar(saludo):
                     self.listos.append(saludo)
+            except Exception:
+                pass
+        for frase in (f for lista in AVISOS.values() for f in lista):  # "Dejame fijarme", "Aguardá"...
+            try:
+                self.voz.preparar(frase)
             except Exception:
                 pass
 

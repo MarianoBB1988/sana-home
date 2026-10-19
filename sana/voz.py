@@ -22,6 +22,7 @@ class Voz:
         self.piper = None
         self.ajustes = None
         self._parlante = threading.Lock()  # una sola respuesta a la vez en el parlante
+        self._fijas: dict[str, tuple[bytes, str]] = {}  # frases que siempre tienen que sonar al instante
         self._piper_listo = threading.Event()
         if config.VOZ_PIPER.exists():
             # Con Edge, Piper es solo respaldo: se carga en segundo plano para no demorar el arranque.
@@ -75,8 +76,23 @@ class Voz:
             self.piper.synthesize_wav(texto, w, syn_config=self.ajustes)
         return buf.getvalue()
 
-    @lru_cache(maxsize=32)  # frases repetidas ("Dejame fijarme…") salen al instante
+    def preparar(self, texto: str) -> bool:
+        """Genera ya las frases fijas (saludos, "dejame fijarme"...) y las guarda para siempre: suenan al instante."""
+        listas = True
+        for parte in frases(texto):
+            if parte not in self._fijas:
+                resultado = self.audio(parte)
+                if resultado:
+                    self._fijas[parte] = resultado
+                else:
+                    listas = False
+        return listas
+
     def audio(self, texto: str) -> tuple[bytes, str] | None:
+        return self._fijas[texto] if texto in self._fijas else self._audio(texto)
+
+    @lru_cache(maxsize=32)  # frases repetidas salen al instante
+    def _audio(self, texto: str) -> tuple[bytes, str] | None:
         """La frase como archivo de audio: (datos, tipo MIME). Para el navegador y el parlante."""
         if not texto:
             return None
