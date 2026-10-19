@@ -3,6 +3,7 @@
 Spotify reproduce en un "dispositivo Spotify Connect": la app abierta en la compu o el celular, o el mini PC
 con raspotify/spotifyd. La primera vez hay que autorizar a Sana: python main.py --conectar-spotify
 """
+import time
 from functools import lru_cache
 
 from . import config
@@ -51,17 +52,33 @@ def conectar() -> None:
         print(f"  - {d['name']} ({d['type']}){' · activo' if d['is_active'] else ''}")
 
 
+# Si no hay nada sonando ni un preferido, se elige en este orden (la tele al final: suele estar apagada)
+ORDEN_TIPOS = ["computer", "smartphone", "speaker", "avr", "stb", "tablet", "tv"]
+
+
 def _dispositivo() -> dict:
-    """El dispositivo donde poner música: el que esté sonando, el preferido del .env, o el primero que haya."""
+    """Dónde poner música: el que ya está sonando, el preferido del .env, o el más probable de estar encendido."""
     dispositivos = _cliente().devices()["devices"]
     if not dispositivos:
-        raise LookupError("No hay ningún dispositivo de Spotify disponible: abrí Spotify en la compu o el celular")
+        raise LookupError("No hay ningún dispositivo de Spotify disponible: abrí la app de Spotify en la compu o el celular")
     preferido = config.clave("SPOTIFY_DISPOSITIVO").lower()
+    orden = lambda d: ORDEN_TIPOS.index(d["type"].lower()) if d["type"].lower() in ORDEN_TIPOS else len(ORDEN_TIPOS)  # noqa: E731
     return (
         next((d for d in dispositivos if d["is_active"]), None)
         or next((d for d in dispositivos if preferido and preferido in d["name"].lower()), None)
-        or dispositivos[0]
+        or sorted(dispositivos, key=orden)[0]
     )
+
+
+def _confirmar(dispositivo: dict, detalle: str) -> str:
+    """Spotify acepta el pedido aunque el aparato esté apagado: se verifica que de verdad haya empezado a sonar."""
+    for _ in range(6):
+        time.sleep(0.5)
+        actual = _cliente().current_playback()
+        if actual and actual.get("is_playing") and actual.get("device", {}).get("id") == dispositivo["id"]:
+            return f"Sonando {detalle} en {dispositivo['name']}."
+    return (f"Mandé {detalle} a {dispositivo['name']}, pero no arrancó a sonar: fijate que esté encendido y con "
+            "Spotify abierto, o abrí Spotify en la compu o el celular.")
 
 
 def poner(busqueda: str, tipo: str = "cualquiera") -> str:
@@ -89,7 +106,7 @@ def poner(busqueda: str, tipo: str = "cualquiera") -> str:
         detalle = f"{nombres[clase]} {elegido['name']}"
         if clase == "album":
             detalle += f" de {elegido['artists'][0]['name']}"
-    return f"Sonando {detalle} en {dispositivo['name']}."
+    return _confirmar(dispositivo, detalle)
 
 
 def controlar(accion: str, volumen: int | None = None) -> str:
