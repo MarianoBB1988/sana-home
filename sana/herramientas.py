@@ -5,7 +5,7 @@ from datetime import datetime
 
 from groq import Groq
 
-from . import ajustes, clima, config, homeassistant as ha
+from . import ajustes, clima, config, homeassistant as ha, spotify
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
@@ -153,7 +153,7 @@ def definiciones() -> list[dict]:
             ),
             _funcion(
                 "controlar_musica",
-                "Controla la reproducción de música (Spotify u otro reproductor).",
+                "Controla un reproductor de Home Assistant (parlante, TV). Para Spotify usá poner_musica y controlar_spotify si están.",
                 {
                     "entity_id": _ENTITY,
                     "accion": {
@@ -164,6 +164,36 @@ def definiciones() -> list[dict]:
                 },
                 ["entity_id", "accion"],
             ),
+        ]
+    if spotify.autorizado():
+        defs += [
+            _funcion(
+                "poner_musica",
+                "Pone música en Spotify buscando por nombre: un artista, una canción, un álbum, una playlist o un estilo "
+                "(por ejemplo 'música para cocinar', 'rock nacional', 'lo-fi').",
+                {
+                    "busqueda": {"type": "string", "description": "Qué buscar, tal como lo pidió (nombre, estilo o ambiente)"},
+                    "tipo": {
+                        "type": "string",
+                        "enum": ["cualquiera", "artista", "cancion", "album", "playlist"],
+                        "description": "playlist para estilos o ambientes; cualquiera si no queda claro",
+                    },
+                },
+                ["busqueda"],
+            ),
+            _funcion(
+                "controlar_spotify",
+                "Controla lo que suena en Spotify: pausar, reanudar, siguiente, anterior, aleatorio o volumen.",
+                {
+                    "accion": {
+                        "type": "string",
+                        "enum": ["pausar", "reanudar", "siguiente", "anterior", "aleatorio", "volumen", "subir_volumen", "bajar_volumen"],
+                    },
+                    "volumen": {"type": "integer", "description": "0 a 100, solo para accion=volumen"},
+                },
+                ["accion"],
+            ),
+            _funcion("que_suena", "Qué está sonando en Spotify ahora y en qué dispositivo."),
         ]
     return defs
 
@@ -177,6 +207,9 @@ def ejecutar(cliente: Groq, nombre: str, argumentos: dict) -> str:
         "controlar_dispositivo": controlar_dispositivo,
         "controlar_aspiradora": controlar_aspiradora,
         "controlar_musica": controlar_musica,
+        "poner_musica": spotify.poner,
+        "controlar_spotify": spotify.controlar,
+        "que_suena": spotify.que_suena,
     }
     if nombre not in funciones:
         return f"No existe la herramienta {nombre}."

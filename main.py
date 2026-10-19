@@ -230,7 +230,16 @@ def main() -> None:
     p.add_argument("--puerto", type=int, default=8000, help="puerto de la interfaz web (por defecto 8000)")
     p.add_argument("--dispositivos", action="store_true", help="listar micrófonos y parlantes")
     p.add_argument("--probar-microfono", action="store_true", help="medir si el micrófono capta lo suficiente")
+    p.add_argument("--conectar-spotify", action="store_true", help="autorizar a Sana a usar tu Spotify (una sola vez)")
     args = p.parse_args()
+
+    if args.conectar_spotify:
+        from sana import spotify
+
+        if not spotify.configurado():
+            sys.exit("Faltan SPOTIFY_CLIENT_ID y SPOTIFY_CLIENT_SECRET en el .env.")
+        spotify.conectar()
+        return
 
     if args.dispositivos:
         import sounddevice as sd
