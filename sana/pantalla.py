@@ -16,7 +16,7 @@ ESTATICOS = Path(__file__).parent / "static"
 PAGINA = ESTATICOS / "pantalla.html"
 TIPOS = {
     ".svg": "image/svg+xml", ".lottie": "application/zip", ".json": "application/json",
-    ".js": "text/javascript", ".wasm": "application/wasm",
+    ".js": "text/javascript", ".wasm": "application/wasm", ".woff2": "font/woff2",
 }
 
 
@@ -43,7 +43,7 @@ class Pantalla:
                 elif ruta_pedida == "/animacion-info":
                     tipo = "svg" if extension == ".svg" else "lottie"
                     self._enviar(f'{{"tipo": "{tipo}", "url": "/animacion{extension}"}}'.encode(), "application/json")
-                elif ruta_pedida.startswith("/vendor/") and ".." not in ruta_pedida:
+                elif ruta_pedida.startswith(("/vendor/", "/fuentes/")) and ".." not in ruta_pedida:
                     ruta = ESTATICOS / ruta_pedida.lstrip("/")
                     self._archivo(ruta, TIPOS.get(ruta.suffix, "application/octet-stream"))
                 elif ruta_pedida == "/estado":

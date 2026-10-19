@@ -181,6 +181,45 @@ def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
             print(flush=True)
 
 
+def probar_microfono(segundos: float = 8.0) -> None:
+    """Medidor en vivo: muestra si el micrófono capta lo suficiente y qué entiende Vosk."""
+    import json
+
+    import numpy as np
+
+    from sana import oido
+
+    print(f'Durante {segundos:.0f} segundos: quedate en silencio un momento y después decí "Sana, ¿qué hora es?" '
+          "como le hablarías normalmente, desde donde vas a estar.\n")
+    niveles, bloques = [], []
+    with oido.Microfono() as mic:
+        for i in range(int(segundos * 10)):
+            bloque = mic.leer()
+            bloques.append(bloque)
+            nivel = float(np.sqrt(np.mean(bloque.astype(np.float32) ** 2)))
+            niveles.append(nivel)
+            barra = "█" * min(50, int(nivel / 100))
+            print(f"\r  nivel {nivel:6.0f} |{barra:<50}|", end="", flush=True)
+    audio = np.concatenate(bloques)
+    fondo, voz, pico = np.percentile(niveles, 10), np.percentile(niveles, 95), int(np.abs(audio).max())
+    print(f"\n\n  ruido de fondo ~{fondo:.0f} · tu voz ~{voz:.0f} · pico {pico} de 32767")
+
+    if config.MODELO_VOSK.exists():
+        import vosk
+
+        vosk.SetLogLevel(-1)
+        rec = vosk.KaldiRecognizer(vosk.Model(str(config.MODELO_VOSK)), oido.FRECUENCIA)
+        rec.AcceptWaveform(audio.tobytes())
+        print(f"  Vosk entendió: {json.loads(rec.FinalResult())['text']!r}")
+
+    if pico < 4000 or voz < fondo * 4:
+        print("\n  ⚠ El micrófono capta muy bajo. Subilo en Windows: Configuración > Sistema > Sonido > tu micrófono >"
+              " Volumen de entrada al 100 %. Si existe, activá también 'Aumento del micrófono' (Panel de control >"
+              " Sonido > Grabar > Propiedades > Niveles). Después volvé a probar.")
+    else:
+        print("\n  ✓ El nivel del micrófono está bien.")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=f"{config.NOMBRE}, asistente de voz para el hogar")
     p.add_argument("--texto", action="store_true", help="conversar escribiendo")
@@ -190,12 +229,16 @@ def main() -> None:
     p.add_argument("--web", action="store_true", help="servir la interfaz web en la red local")
     p.add_argument("--puerto", type=int, default=8000, help="puerto de la interfaz web (por defecto 8000)")
     p.add_argument("--dispositivos", action="store_true", help="listar micrófonos y parlantes")
+    p.add_argument("--probar-microfono", action="store_true", help="medir si el micrófono capta lo suficiente")
     args = p.parse_args()
 
     if args.dispositivos:
         import sounddevice as sd
 
         print(sd.query_devices())
+        return
+    if args.probar_microfono:
+        probar_microfono()
         return
 
     if not config.GROQ_API_KEY:

@@ -128,7 +128,9 @@ def _distancia(a: str, b: str) -> int:
 
 def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None:
     """Graba desde que se detecta voz hasta un silencio. Devuelve un WAV, o None si nadie habló."""
-    umbral = max(mic.ruido * 3, 300)
+    # 2,5 veces el ruido de fondo: con micrófonos que captan bajo, la voz apenas lo supera.
+    # Los ruidos sueltos se filtran después (0,2 s seguidos de sonido y confianza de Whisper).
+    umbral = max(mic.ruido * 2.5, 250)
     previos: deque = deque(maxlen=PREVIO + INICIO_VOZ)
     bloques, hablando, silencio, t, seguidos = [], False, 0.0, 0.0, 0
     while True:
