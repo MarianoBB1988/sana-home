@@ -156,6 +156,12 @@ def ejecutar(cliente: Groq, nombre: str, argumentos: dict) -> str:
         "controlar_aspiradora": controlar_aspiradora,
         "controlar_musica": controlar_musica,
     }
+    if nombre not in funciones:
+        return f"No existe la herramienta {nombre}."
+    # A veces el modelo manda parámetros de más o con nombre vacío: solo se pasan los que la herramienta declara
+    definicion = next((d["function"] for d in definiciones() if d["function"]["name"] == nombre), None)
+    validos = set(definicion["parameters"]["properties"]) if definicion else set()
+    argumentos = {k: v for k, v in (argumentos or {}).items() if k in validos}
     try:
         return funciones[nombre](**argumentos)
     except Exception as e:

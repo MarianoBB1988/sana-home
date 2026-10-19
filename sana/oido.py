@@ -19,6 +19,8 @@ SILENCIO_FINAL = 0.9  # segundos de silencio que cierran la frase
 MAX_ESPERA = 6.0  # segundos esperando que empiece a hablar
 MAX_FRASE = 20.0
 PREVIO = 3  # bloques de antes de detectar la voz que se agregan al inicio (para no cortar la primera sílaba)
+INICIO_VOZ = 2  # bloques seguidos con sonido para considerar que empezó a hablar (un golpe o un pitido no alcanzan)
+ULTIMA_FRASE = config.RAIZ / "datos" / "ultima_frase.wav"  # el último audio enviado a Whisper, para diagnosticar
 
 # Frases que Whisper inventa cuando solo hay ruido
 ALUCINACIONES = re.compile(
@@ -101,20 +103,20 @@ class PalabraClave:
 def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None:
     """Graba desde que se detecta voz hasta un silencio. Devuelve un WAV, o None si nadie habló."""
     umbral = max(mic.ruido * 3, 300)
-    previos: deque = deque(maxlen=PREVIO)
-    bloques, hablando, silencio, t = [], False, 0.0, 0.0
+    previos: deque = deque(maxlen=PREVIO + INICIO_VOZ)
+    bloques, hablando, silencio, t, seguidos = [], False, 0.0, 0.0, 0
     while True:
         bloque = mic.leer()
         t += 0.1
         fuerte = _rms(bloque) > umbral
         if not hablando:
-            if fuerte:
+            previos.append(bloque)
+            seguidos = seguidos + 1 if fuerte else 0
+            if seguidos >= INICIO_VOZ:
                 hablando = True
-                bloques = list(previos) + [bloque]
+                bloques = list(previos)
             elif t > max_espera:
                 return None
-            else:
-                previos.append(bloque)
             continue
         bloques.append(bloque)
         silencio = 0.0 if fuerte else silencio + 0.1
@@ -127,6 +129,11 @@ def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None
         w.setsampwidth(2)
         w.setframerate(FRECUENCIA)
         w.writeframes(np.concatenate(bloques).tobytes())
+    try:
+        ULTIMA_FRASE.parent.mkdir(exist_ok=True)
+        ULTIMA_FRASE.write_bytes(buf.getvalue())
+    except OSError:
+        pass
     return buf.getvalue()
 
 
@@ -138,4 +145,7 @@ def transcribir(cliente: Groq, audio: bytes, nombre_archivo: str = "frase.wav") 
         language="es",
     )
     texto = r.text.strip()
-    return "" if ALUCINACIONES.match(texto.strip(" .!¡¿?")) else texto
+    if not texto or ALUCINACIONES.match(texto.strip(" .!¡¿?")):
+        print(f"  (Whisper solo oyó ruido: {texto!r})", flush=True)
+        return ""
+    return texto

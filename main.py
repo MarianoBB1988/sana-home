@@ -9,6 +9,7 @@
 import argparse
 import sys
 import threading
+import time
 
 from sana import config
 
@@ -60,13 +61,14 @@ def conversar(cerebro, voz, mic) -> None:
         if not wav:
             return
         texto = oido.transcribir(cerebro.cliente, wav)
-        if not texto:
-            print("  (no entendí nada)", flush=True)
-            return
+        if not texto:  # era ruido: le doy otra oportunidad en vez de cortar la charla
+            espera = SEGUIMIENTO
+            continue
         print(f"Vos: {texto}", flush=True)
         respuesta = cerebro.responder(texto, avisador(voz))
         print(f"{config.NOMBRE}: {respuesta}", flush=True)
         voz.decir(respuesta)
+        time.sleep(0.3)
         mic.descartar()  # lo que el micrófono escuchó mientras Sana hablaba era ella misma
         espera = SEGUIMIENTO
 
@@ -95,7 +97,8 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
                 else:
                     input("[Enter para hablar]")
                 voz.pitido()
-                mic.descartar()
+                time.sleep(0.3)  # el parlante sigue sonando un instante después de "terminar" el pitido
+                mic.descartar()  # que el pitido no se tome como el comienzo del pedido
                 conversar(cerebro, voz, mic)
             except (EOFError, KeyboardInterrupt):
                 break

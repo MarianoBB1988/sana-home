@@ -1,5 +1,6 @@
 """Conversación con el LLM de Groq, con memoria corta y uso de herramientas."""
 import json
+import re
 from collections.abc import Callable
 
 from groq import Groq
@@ -59,7 +60,12 @@ class Cerebro:
             )
             msg = r.choices[0].message
             if not msg.tool_calls:
-                respuesta = msg.content or ""
+                respuesta = (msg.content or "").strip()
+                if not respuesta:  # a veces el modelo devuelve vacío: se le pide que conteste
+                    mensajes.append({"role": "user", "content": "Respondé la pregunta anterior en una o dos oraciones."})
+                    continue
+                # "…por ciento.¿Te ayudo…" -> con espacio, así la voz hace la pausa entre oraciones
+                respuesta = re.sub(r"([.!?])(?=[¿¡A-ZÁÉÍÓÚÑ])", r"\1 ", respuesta)
                 self.historial.append({"role": "assistant", "content": respuesta})
                 return respuesta
 
