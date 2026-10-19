@@ -12,7 +12,12 @@ from pathlib import Path
 
 from . import config
 
-PAGINA = Path(__file__).parent / "static" / "pantalla.html"
+ESTATICOS = Path(__file__).parent / "static"
+PAGINA = ESTATICOS / "pantalla.html"
+TIPOS = {
+    ".svg": "image/svg+xml", ".lottie": "application/zip", ".json": "application/json",
+    ".js": "text/javascript", ".wasm": "application/wasm",
+}
 
 
 class Pantalla:
@@ -28,14 +33,30 @@ class Pantalla:
                 pass
 
             def do_GET(self):
-                if self.path in ("/", "/index.html"):
+                animacion = config.ANIMACION
+                extension = animacion.suffix.lower()
+                ruta_pedida = self.path.split("?")[0]
+                if ruta_pedida in ("/", "/index.html"):
                     self._archivo(PAGINA, "text/html; charset=utf-8")
-                elif self.path == "/animacion.svg":
-                    self._archivo(config.ANIMACION, "image/svg+xml")
-                elif self.path == "/estado":
+                elif ruta_pedida == f"/animacion{extension}":
+                    self._archivo(animacion, TIPOS.get(extension, "application/octet-stream"))
+                elif ruta_pedida == "/animacion-info":
+                    tipo = "svg" if extension == ".svg" else "lottie"
+                    self._enviar(f'{{"tipo": "{tipo}", "url": "/animacion{extension}"}}'.encode(), "application/json")
+                elif ruta_pedida.startswith("/vendor/") and ".." not in ruta_pedida:
+                    ruta = ESTATICOS / ruta_pedida.lstrip("/")
+                    self._archivo(ruta, TIPOS.get(ruta.suffix, "application/octet-stream"))
+                elif ruta_pedida == "/estado":
                     self._eventos()
                 else:
                     self.send_error(404)
+
+            def _enviar(self, datos: bytes, tipo: str):
+                self.send_response(200)
+                self.send_header("Content-Type", tipo)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(datos)
 
             def _archivo(self, ruta: Path, tipo: str):
                 try:
@@ -43,11 +64,7 @@ class Pantalla:
                 except OSError:
                     self.send_error(404)
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", tipo)
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(datos)
+                self._enviar(datos, tipo)
 
             def _eventos(self):
                 self.send_response(200)
