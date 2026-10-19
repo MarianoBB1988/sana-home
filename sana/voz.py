@@ -90,6 +90,21 @@ class Voz:
 
     # --- Parlante de la casa ---
 
+    def sonido_apagado(self) -> None:
+        """Notificación de "me pongo en pausa": tres notas descendentes suaves que se apagan."""
+        frecuencia = 24000
+        notas = (659.3, 523.3, 392.0)  # mi, do, sol
+        duracion = 0.22
+        t = np.arange(int(frecuencia * duracion)) / frecuencia
+        envolvente = np.exp(-t * 9) * np.minimum(1, t * 400)  # ataque corto y caída como una campanita
+        partes = [
+            (np.sin(2 * np.pi * f * t) + 0.3 * np.sin(4 * np.pi * f * t)) * envolvente * 0.2 for f in notas
+        ]
+        audio = (np.concatenate(partes + [np.zeros(int(frecuencia * 0.1))]) * 32767).astype(np.int16)
+        with self._parlante:
+            sd.play(audio, frecuencia, device=config.PARLANTE)
+            sd.wait()
+
     def pitido(self, subiendo: bool = True) -> None:
         """Dos tonos cortos: subiendo es "te escucho"; bajando, "me quedo en pausa"."""
         frecuencia = 24000

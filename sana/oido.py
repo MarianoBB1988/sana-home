@@ -21,10 +21,13 @@ MAX_FRASE = 20.0
 PREVIO = 3  # bloques de antes de detectar la voz que se agregan al inicio (para no cortar la primera sílaba)
 INICIO_VOZ = 2  # bloques seguidos con sonido para considerar que empezó a hablar (un golpe o un pitido no alcanzan)
 ULTIMA_FRASE = config.RAIZ / "datos" / "ultima_frase.wav"  # el último audio enviado a Whisper, para diagnosticar
+CONFIANZA_MINIMA = -0.45  # avg_logprob de Whisper: por debajo es ruido que Whisper "transcribió" igual
 
 # Frases que Whisper inventa cuando solo hay ruido
 ALUCINACIONES = re.compile(
-    r"^(gracias( por ver( el video)?)?|subt[ií]tulos.*|amara\.org.*|suscr[ií]bete.*|\.+|…)$", re.I
+    r"^(gracias( por ver( el video)?)?|subt[ií]tulos.*|amara\.org.*|suscr[ií]bete.*|\.+|…"
+    r"|[\[(]?(m[uú]sica|aplausos|risas|silencio|ruido)[\])]?)$",
+    re.I,
 )
 
 
@@ -143,9 +146,14 @@ def transcribir(cliente: Groq, audio: bytes, nombre_archivo: str = "frase.wav") 
         file=(nombre_archivo, audio),
         model=config.GROQ_MODELO_STT,
         language="es",
+        response_format="verbose_json",
     )
     texto = r.text.strip()
-    if not texto or ALUCINACIONES.match(texto.strip(" .!¡¿?")):
-        print(f"  (Whisper solo oyó ruido: {texto!r})", flush=True)
+    # Con ruido (ventilador, pitidos, golpes) Whisper inventa palabras con poca confianza (~-0.55 o menos);
+    # con voz real, aun bajita, da ~-0.2/-0.3
+    confianzas = [s["avg_logprob"] for s in (r.segments or []) if "avg_logprob" in s]
+    confianza = sum(confianzas) / len(confianzas) if confianzas else 0.0
+    if not texto or ALUCINACIONES.match(texto.strip(" .!¡¿?")) or confianza < CONFIANZA_MINIMA:
+        print(f"  (solo ruido: Whisper oyó {texto!r} con confianza {confianza:.2f})", flush=True)
         return ""
     return texto

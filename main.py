@@ -7,6 +7,7 @@
     python main.py --dispositivos  lista micrófonos y parlantes
 """
 import argparse
+import random
 import sys
 import threading
 import time
@@ -49,21 +50,66 @@ def modo_texto(cerebro, voz, hablar: bool) -> None:
 
 SEGUIMIENTO = 5.0  # segundos en que se puede seguir hablando sin repetir la palabra clave
 
+# Lo que dice Sana al llamarla, rotando. Se generan al arrancar para que suenen al instante.
+SALUDOS = [
+    "¿Sí? Decime.",
+    "Te escucho.",
+    "¿En qué te puedo ayudar?",
+    "Acá estoy.",
+    "¿Qué necesitás?",
+    "Decime.",
+    "¿Sí?",
+]
+
+
+class Saludos:
+    def __init__(self, voz):
+        self.voz = voz
+        self.listos: list[str] = []
+        self.ultimo = ""
+        threading.Thread(target=self._preparar, daemon=True).start()
+
+    def _preparar(self) -> None:
+        from sana.voz import frases
+
+        for saludo in SALUDOS:
+            try:
+                # La voz reproduce frase por frase: se preparan las partes ("¿Sí?" y "Decime.") y quedan en su caché
+                if all(self.voz.audio(parte) for parte in frases(saludo)):
+                    self.listos.append(saludo)
+            except Exception:
+                pass
+
+    def decir(self) -> None:
+        """Un saludo distinto al anterior; si todavía no hay ninguno listo, el pitido."""
+        opciones = [f for f in self.listos if f != self.ultimo] or self.listos
+        if not opciones:
+            self.voz.pitido()
+            return
+        self.ultimo = random.choice(opciones)
+        print(f"{config.NOMBRE}: {self.ultimo}", flush=True)
+        self.voz.decir(self.ultimo)
+
 
 def conversar(cerebro, voz, mic) -> None:
     """Una charla: escucha el pedido, responde, y sigue escuchando un rato por si hay otra pregunta."""
     from sana import oido
 
     espera = oido.MAX_ESPERA
+    ruidos = 0
     while True:
-        print("  Escuchando...", flush=True)
+        print(f"  Escuchando... ({espera:.0f} s)", flush=True)
         wav = oido.grabar_frase(mic, max_espera=espera)
         if not wav:
             return
         texto = oido.transcribir(cerebro.cliente, wav)
-        if not texto:  # era ruido: le doy otra oportunidad en vez de cortar la charla
+        if not texto:  # era ruido: una sola oportunidad más, para no quedar dando vueltas con un ruido constante
+            ruidos += 1
+            if ruidos > 1:
+                return
             espera = SEGUIMIENTO
             continue
+        ruidos = 0
         print(f"Vos: {texto}", flush=True)
         respuesta = cerebro.responder(texto, avisador(voz))
         print(f"{config.NOMBRE}: {respuesta}", flush=True)
@@ -83,6 +129,7 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
         else:
             print(f"(No encontré el modelo de Vosk en {config.MODELO_VOSK}: uso Enter en lugar de la palabra clave.)")
 
+    saludos = Saludos(voz)
     with oido.Microfono() as mic:
         if palabra:
             print(f'{config.NOMBRE} escuchando. Decí "{palabra.palabra.capitalize()}" y después tu pedido (Ctrl+C para salir).\n', flush=True)
@@ -91,14 +138,13 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
         while True:
             try:
                 if palabra:
-                    print(f'Esperando que digas "{palabra.palabra.capitalize()}"...', flush=True)
+                    print(f'En pausa. Decí "{palabra.palabra.capitalize()}" para hablar.', flush=True)
                     palabra.esperar(mic)
-                    print(f'  ("{palabra.palabra}" detectado)', flush=True)
                 else:
                     input("[Enter para hablar]")
-                voz.pitido()
-                time.sleep(0.3)  # el parlante sigue sonando un instante después de "terminar" el pitido
-                mic.descartar()  # que el pitido no se tome como el comienzo del pedido
+                saludos.decir()
+                time.sleep(0.3)  # el parlante sigue sonando un instante después de terminar
+                mic.descartar()  # que el saludo no se tome como el comienzo del pedido
                 conversar(cerebro, voz, mic)
             except (EOFError, KeyboardInterrupt):
                 break
@@ -109,7 +155,7 @@ def modo_voz(cerebro, voz, con_enter: bool) -> None:
                 except Exception:
                     pass
             try:
-                voz.pitido(subiendo=False)  # "me quedo en pausa"
+                voz.sonido_apagado()  # "me quedo en pausa"
             except Exception as e:
                 print(f"  (no pude reproducir el aviso: {e})", flush=True)
             mic.descartar()
