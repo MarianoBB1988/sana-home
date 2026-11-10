@@ -6,8 +6,12 @@
 #
 # Volver a correrlo actualiza a la última versión del repositorio sin tocar tu .env ni tus ajustes.
 # Sana queda corriendo en segundo plano, escuchando la palabra "Sana" por el micrófono.
+# Funciona en un mini PC y en una Raspberry Pi 3 o más nueva (con sistema de 64 bits): en equipos con poca memoria
+# entra en "modo liviano" (sin la voz local Piper y con memoria comprimida zram).
 # Variables opcionales: SANA_DIR (carpeta, por defecto ~/sana-home), SANA_SIN_SERVICIO=1 (no crear el servicio),
-# SANA_WEB=1 (además, servir la página web de Sana en SANA_PUERTO, por defecto 8000).
+# SANA_WEB=1 (además, servir la página web de Sana en SANA_PUERTO, por defecto 8000),
+# SANA_HOME_ASSISTANT=1 o 0 (instalar o no Home Assistant en Docker en este mismo equipo; si no se indica, pregunta),
+# SANA_LIVIANO=1 (forzar el modo liviano).
 set -euo pipefail
 
 REPO="https://github.com/MarianoBB1988/sana-home.git"
@@ -29,7 +33,24 @@ preguntar() {
 }
 
 [ "$(id -u)" -ne 0 ] || error "corrélo con tu usuario normal, no como root (el script pide sudo cuando lo necesita)."
-command -v apt-get >/dev/null || error "este instalador es para Ubuntu o Debian (no encontré apt-get)."
+command -v apt-get >/dev/null || error "este instalador es para Ubuntu, Debian o Raspberry Pi OS (no encontré apt-get)."
+case "$(uname -m)" in
+  x86_64|aarch64) ;;
+  *) error "hace falta un sistema de 64 bits (en Raspberry Pi: Raspberry Pi OS Lite 64-bit). Este es $(uname -m)." ;;
+esac
+
+# ¿Qué equipo es? En una Raspberry Pi o con poca memoria se activa el modo liviano.
+MODELO="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)"
+MEMORIA_MB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 ))
+ES_RASPBERRY=0; [[ "$MODELO" == Raspberry\ Pi* ]] && ES_RASPBERRY=1
+LIVIANO="${SANA_LIVIANO:-0}"; [ "$MEMORIA_MB" -lt 1800 ] && LIVIANO=1
+echo "Equipo: ${MODELO:-$(uname -m)} · memoria ${MEMORIA_MB} MB$([ "$LIVIANO" = 1 ] && echo ' · modo liviano')"
+
+INSTALAR_HA="${SANA_HOME_ASSISTANT:-}"
+if [ -z "$INSTALAR_HA" ]; then
+  respuesta="$(preguntar '¿Instalar también Home Assistant en este equipo (Docker)? [S/n]: ')"
+  case "${respuesta,,}" in n|no) INSTALAR_HA=0 ;; *) INSTALAR_HA=1 ;; esac
+fi
 
 paso "Instalando paquetes del sistema"
 sudo apt-get update -qq
@@ -42,6 +63,15 @@ python3 - <<'EOF' || error "hace falta Python 3.10 o más nuevo."
 import sys
 sys.exit(0 if sys.version_info >= (3, 10) else 1)
 EOF
+
+if [ "$LIVIANO" = 1 ]; then
+  paso "Memoria comprimida (zram): más margen en equipos con poca RAM"
+  sudo apt-get install -y -qq zram-tools >/dev/null || echo "Aviso: no se pudo instalar zram-tools; se sigue igual."
+  if [ -f /etc/default/zramswap ]; then
+    printf 'ALGO=zstd\nPERCENT=60\nPRIORITY=100\n' | sudo tee /etc/default/zramswap >/dev/null
+    sudo systemctl restart zramswap 2>/dev/null || true
+  fi
+fi
 
 paso "Descargando SanaHome en $DESTINO"
 if [ -d "$DESTINO/.git" ]; then
@@ -56,12 +86,16 @@ paso "Preparando el entorno de Python (puede tardar unos minutos)"
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
 
-paso "Descargando la voz local de respaldo ($VOZ_PIPER)"
 mkdir -p voces
-if [ ! -f "voces/$VOZ_PIPER.onnx" ]; then
-  .venv/bin/python -m piper.download_voices --download-dir voces "$VOZ_PIPER"
+if [ "$LIVIANO" = 1 ]; then
+  echo "Modo liviano: sin la voz local de respaldo (Piper); Sana habla con Edge TTS."
 else
-  echo "Ya estaba descargada."
+  paso "Descargando la voz local de respaldo ($VOZ_PIPER)"
+  if [ ! -f "voces/$VOZ_PIPER.onnx" ]; then
+    .venv/bin/python -m piper.download_voices --download-dir voces "$VOZ_PIPER"
+  else
+    echo "Ya estaba descargada."
+  fi
 fi
 
 paso "Descargando el reconocedor local de la palabra \"Sana\" ($MODELO_VOSK)"
@@ -86,7 +120,40 @@ else
   echo "Ya existe: no lo toco."
 fi
 chmod 600 .env
+# Valores que dependen del equipo (solo si todavía están vacíos o en su valor por defecto)
+if [ "$LIVIANO" = 1 ] && grep -q "^VOZ_PIPER=voces/$VOZ_PIPER.onnx" .env; then
+  sed -i "s|^VOZ_PIPER=.*|VOZ_PIPER=voces/sin-piper.onnx|" .env  # un archivo que no existe: no carga Piper
+fi
+if [ "$ES_RASPBERRY" = 1 ] && grep -q '^PARLANTE=$' .env; then
+  sed -i 's|^PARLANTE=$|PARLANTE=Headphones|' .env  # el jack de 3,5 mm de la Raspberry Pi
+fi
 grep -q '^GROQ_API_KEY=.\+' .env || echo "Falta GROQ_API_KEY: editá $DESTINO/.env antes de usar Sana."
+
+if [ "$INSTALAR_HA" = 1 ]; then
+  paso "Home Assistant (Docker) en este equipo"
+  if ! command -v docker >/dev/null; then
+    sudo apt-get install -y -qq docker.io >/dev/null
+    sudo systemctl enable --now docker
+  fi
+  sudo usermod -aG docker "$USER" || true
+  ZONA="$(timedatectl show -p Timezone --value 2>/dev/null || echo America/Montevideo)"
+  IMAGEN="ghcr.io/home-assistant/home-assistant:stable"
+  echo "Descargando Home Assistant (la primera vez tarda varios minutos)..."
+  sudo docker pull -q "$IMAGEN" >/dev/null
+  # Si ya existe y la imagen es la misma, se deja como está; si hay versión nueva, se recrea (la configuración queda)
+  if sudo docker inspect homeassistant >/dev/null 2>&1; then
+    if [ "$(sudo docker inspect -f '{{.Image}}' homeassistant)" != "$(sudo docker image inspect -f '{{.Id}}' "$IMAGEN")" ]; then
+      sudo docker rm -f homeassistant >/dev/null
+    fi
+  fi
+  if ! sudo docker inspect homeassistant >/dev/null 2>&1; then
+    sudo mkdir -p /opt/homeassistant
+    sudo docker run -d --name homeassistant --restart=unless-stopped --privileged --network=host \
+      -e TZ="$ZONA" -v /opt/homeassistant:/config -v /run/dbus:/run/dbus:ro "$IMAGEN" >/dev/null
+  fi
+  # Sana habla con este Home Assistant (falta el token: se crea después del primer ingreso)
+  grep -q '^HA_URL=$' .env && sed -i 's|^HA_URL=$|HA_URL=http://localhost:8123|' .env
+fi
 
 paso "Audio"
 # Para que el audio (y el parlante Bluetooth) funcionen aunque nadie inicie sesión en el equipo
@@ -131,10 +198,21 @@ if [ "${SANA_SIN_SERVICIO:-0}" != "1" ]; then
 fi
 
 paso "Listo"
+IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 verde "Sana está escuchando: decí \"Sana\" y tu pedido (por ejemplo: \"Sana, prendé la luz del living\")."
 if [ "${SANA_WEB:-0}" = "1" ]; then
-  IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
   verde "Página web: http://${IP:-localhost}:$PUERTO"
+fi
+if [ "$INSTALAR_HA" = 1 ]; then
+  verde "Home Assistant: http://${IP:-localhost}:8123  (tarda unos minutos en arrancar la primera vez)"
+  if ! grep -q '^HA_TOKEN=.\+' .env; then
+    cat <<EOF
+  Para conectar Sana con Home Assistant:
+    1. Entrá a http://${IP:-localhost}:8123 y creá tu usuario.
+    2. Tu perfil > Seguridad > Tokens de acceso de larga duración > Crear token.
+    3. Pegalo en $DESTINO/.env (HA_TOKEN=...) y: sudo systemctl restart $SERVICIO
+EOF
+  fi
 fi
 cat <<EOF
 

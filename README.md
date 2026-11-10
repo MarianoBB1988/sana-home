@@ -74,6 +74,20 @@ En **Ajustes** (botón arriba a la derecha) se guardan la ubicación, la fuente 
 4. En `~/sana-home/.env` completar `HA_URL` y `HA_TOKEN`
    (Home Assistant → tu perfil → Seguridad → *Tokens de acceso de larga duración*) y `sudo systemctl restart sana-home`.
 
+### Raspberry Pi 3 (o más nueva), sin pantalla y por Ethernet
+
+1. Con **Raspberry Pi Imager** grabá **Raspberry Pi OS Lite (64-bit)** en la tarjeta. En la configuración del
+   Imager activá **SSH**, poné usuario y contraseña, y la zona horaria. Conviene una SD de buena marca (A1/A2):
+   Home Assistant escribe seguido y las baratas se gastan rápido.
+2. Conectala por cable de red, prendela y entrá por SSH desde la compu: `ssh usuario@raspberrypi.local`
+3. Corré el mismo comando de instalación del paso 2 y respondé **S** cuando pregunte por Home Assistant.
+   En la Pi entra solo en **modo liviano**: sin la voz local Piper (habla con Edge), con memoria comprimida (zram)
+   y el sonido por el **jack de 3,5 mm**. Home Assistant queda en `http://IP-DE-LA-PI:8123`.
+4. Enchufá la PS3 Eye y un parlante al jack. Probalo con `cd ~/sana-home && .venv/bin/python main.py --probar-microfono`.
+
+Con 1 GB de RAM alcanza para Sana y Home Assistant con luces, enchufes, Spotify y Fire TV; para cámaras con
+detección de personas (Frigate) hace falta un equipo más potente.
+
 ## 3. Conectar los dispositivos a Home Assistant
 
 **Relays de Temu.** Configuralos con la app **Smart Life** (casi todos los genéricos son Tuya). Si la app no los reconoce, probá **eWeLink**.
