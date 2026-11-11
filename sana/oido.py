@@ -4,6 +4,7 @@ import io
 import json
 import queue
 import re
+import unicodedata
 import wave
 from collections import deque
 
@@ -15,7 +16,7 @@ from . import config
 
 FRECUENCIA = 16000
 BLOQUE = 1600  # 100 ms
-SILENCIO_FINAL = 0.9  # segundos de silencio que cierran la frase
+SILENCIO_FINAL = 0.7  # segundos de silencio que cierran la frase
 MAX_ESPERA = 6.0  # segundos esperando que empiece a hablar
 MAX_FRASE = 20.0
 PREVIO = 3  # bloques de antes de detectar la voz que se agregan al inicio (para no cortar la primera sílaba)
@@ -23,7 +24,8 @@ INICIO_VOZ = 2  # bloques seguidos con sonido para considerar que empezó a habl
 ULTIMA_FRASE = config.RAIZ / "datos" / "ultima_frase.wav"  # el último audio enviado a Whisper, para diagnosticar
 # Palabras de uso diario parecidas a "sana" que no tienen que activarla aunque se digan solas
 PALABRAS_COMUNES = {"sala", "sara", "saga", "sapa", "rana", "lana", "cana", "mana", "nana", "gana", "pana", "sama"}
-CONFIANZA_MINIMA = -0.45  # avg_logprob de Whisper: por debajo es ruido que Whisper "transcribió" igual
+CONFIANZA_MINIMA = -0.45  # avg_logprob de Whisper: por debajo, 1 o 2 palabras sueltas son ruido "transcripto"
+CONFIANZA_MINIMA_FRASE = -0.8  # para frases de 3 o más palabras (con música de fondo una frase real da ~-0.5)
 
 # Frases que Whisper inventa cuando solo hay ruido
 ALUCINACIONES = re.compile(
@@ -92,27 +94,58 @@ class PalabraClave:
         self._patron = re.compile(rf"\b{p}\b{corrido}")
         self._vosk = vosk
 
-    def _parecida(self, texto: str) -> bool:
-        """Una frase cortita (1 o 2 palabras) con una palabra a una letra de distancia: "ana", "sano", "zana"...
-        Así no hace falta repetir "Sana" si Vosk la entendió mal, sin activarse con frases normales."""
-        palabras = texto.split()
-        return 0 < len(palabras) <= 2 and any(
-            len(p) >= 3 and p not in PALABRAS_COMUNES and _distancia(p, self.palabra) <= 1 for p in palabras
-        )
+    def _distancia_sonido(self, palabra: str) -> int:
+        return _distancia(_fonetica(palabra), _fonetica(self.palabra))
 
-    def esperar(self, mic: Microfono) -> None:
+    def _parecida(self, texto: str) -> bool:
+        """Una frase corta que empieza con algo que suena como "Sana" ("sala…", "zona…", "sara…"), o de 1 o 2
+        palabras con una parecida. Así no hace falta repetir "Sana" si Vosk la entendió mal."""
+        palabras = texto.split()
+        if not 0 < len(palabras) <= 4:
+            return False
+        parece = lambda p: len(p) >= 3 and self._distancia_sonido(p) <= 1  # noqa: E731
+        # Al principio de la frase vale cualquier palabra parecida, aunque sea común: así se llama a alguien
+        # ("sala, ¿me escuchás?" es "Sana, ¿me escuchás?" mal entendido); "la sala" no empieza con ella.
+        if parece(palabras[0]):
+            return True
+        return len(palabras) <= 2 and any(parece(p) and p not in PALABRAS_COMUNES for p in palabras[1:])
+
+    def _dudosa(self, texto: str) -> bool:
+        """Puede ser "Sana" mal entendida ("son muchas" = "Sana, ¿me escuchás?"): vale la pena una segunda opinión."""
+        palabras = texto.split()
+        return 0 < len(palabras) <= 5 and 3 <= len(palabras[0]) <= 6 and self._distancia_sonido(palabras[0]) <= 2
+
+    def esperar(self, mic: Microfono, confirmar=None) -> tuple[list[np.ndarray], bool, str]:
+        """Espera la palabra clave. Devuelve (audio de la frase desde que empezó, si la frase ya terminó, lo que
+        entendió Vosk). confirmar(wav) -> bool: segunda opinión (Whisper) para lo que Vosk no entendió claro."""
         reconocedor = self._vosk.KaldiRecognizer(self.modelo, FRECUENCIA)
+        frase: deque = deque(maxlen=80)  # el audio de la frase en curso (hasta 8 s)
         while True:
             bloque = mic.leer()
             mic.actualizar_ruido(bloque)
+            frase.append(bloque)
             if reconocedor.AcceptWaveform(bloque.tobytes()):
                 texto = json.loads(reconocedor.Result()).get("text", "")
                 if self._patron.search(texto) or self._parecida(texto):
-                    return
+                    return list(frase), True, texto
+                if texto and confirmar and self._dudosa(texto) and confirmar(a_wav(list(frase))):
+                    print(f"  (oí: {texto!r}; Whisper confirmó que era \"{self.palabra}\")", flush=True)
+                    return list(frase), True, texto
                 if texto:
                     print(f"  (oí: {texto!r})", flush=True)
-            elif self._patron.search(json.loads(reconocedor.PartialResult()).get("partial", "")):
-                return
+                frase.clear()
+            else:
+                parcial = json.loads(reconocedor.PartialResult()).get("partial", "")
+                if self._patron.search(parcial):
+                    return list(frase), False, parcial
+
+
+def _fonetica(palabra: str) -> str:
+    """Cómo suena en español rioplatense: z/ce/ci = s, v = b, ll/y iguales, h muda, sin tildes."""
+    p = unicodedata.normalize("NFKD", palabra.lower()).encode("ascii", "ignore").decode()
+    for antes, despues in (("ce", "se"), ("ci", "si"), ("z", "s"), ("v", "b"), ("ll", "y"), ("qu", "k"), ("h", "")):
+        p = p.replace(antes, despues)
+    return p
 
 
 def _distancia(a: str, b: str) -> int:
@@ -126,13 +159,28 @@ def _distancia(a: str, b: str) -> int:
     return previa[-1]
 
 
-def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None:
-    """Graba desde que se detecta voz hasta un silencio. Devuelve un WAV, o None si nadie habló."""
+def umbral_voz(mic: Microfono) -> float:
     # 2,5 veces el ruido de fondo: con micrófonos que captan bajo, la voz apenas lo supera.
     # Los ruidos sueltos se filtran después (0,2 s seguidos de sonido y confianza de Whisper).
-    umbral = max(mic.ruido * 2.5, 250)
+    return max(mic.ruido * 2.5, 250)
+
+
+def sigue_hablando(mic: Microfono, bloques: int = 4) -> list[np.ndarray] | None:
+    """Justo después de "Sana": si en los próximos ~0,4 s hay voz, el pedido viene de corrido ("Sana, apagá la
+    luz"). Devuelve esos bloques para no perderlos, o None si hubo pausa."""
+    leidos = [mic.leer() for _ in range(bloques)]
+    fuertes = sum(_rms(b) > umbral_voz(mic) for b in leidos)
+    return leidos if fuertes >= 2 else None
+
+
+def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA, iniciales: list | None = None) -> bytes | None:
+    """Graba desde que se detecta voz hasta un silencio. Devuelve un WAV, o None si nadie habló.
+    iniciales: bloques ya leídos que son el comienzo de la frase (pedido dicho de corrido con "Sana")."""
+    umbral = umbral_voz(mic)
     previos: deque = deque(maxlen=PREVIO + INICIO_VOZ)
     bloques, hablando, silencio, t, seguidos = [], False, 0.0, 0.0, 0
+    if iniciales:
+        bloques, hablando = list(iniciales), True
     while True:
         bloque = mic.leer()
         t += 0.1
@@ -151,18 +199,36 @@ def grabar_frase(mic: Microfono, max_espera: float = MAX_ESPERA) -> bytes | None
         if silencio >= SILENCIO_FINAL or len(bloques) * 0.1 >= MAX_FRASE:
             break
 
+    datos = a_wav(bloques)
+    try:
+        ULTIMA_FRASE.parent.mkdir(exist_ok=True)
+        ULTIMA_FRASE.write_bytes(datos)
+    except OSError:
+        pass
+    return datos
+
+
+def a_wav(bloques: list[np.ndarray]) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(FRECUENCIA)
         w.writeframes(np.concatenate(bloques).tobytes())
-    try:
-        ULTIMA_FRASE.parent.mkdir(exist_ok=True)
-        ULTIMA_FRASE.write_bytes(buf.getvalue())
-    except OSError:
-        pass
     return buf.getvalue()
+
+
+def es_llamado(cliente: Groq, audio: bytes, palabra: str = "") -> bool:
+    """Segunda opinión: ¿en este audio llamaron a Sana? Whisper, orientado a esperar esa palabra."""
+    palabra = (palabra or config.PALABRA_CLAVE).lower()
+    try:
+        r = cliente.audio.transcriptions.create(
+            file=("llamado.wav", audio), model=config.GROQ_MODELO_STT, language="es", prompt=palabra.capitalize(),
+        )
+    except Exception:
+        return False
+    primeras = re.findall(r"\w+", r.text.lower())[:3]
+    return any(_distancia(_fonetica(p), _fonetica(palabra)) <= 1 for p in primeras)
 
 
 def transcribir(cliente: Groq, audio: bytes, nombre_archivo: str = "frase.wav") -> str:
@@ -178,7 +244,11 @@ def transcribir(cliente: Groq, audio: bytes, nombre_archivo: str = "frase.wav") 
     # con voz real, aun bajita, da ~-0.2/-0.3
     confianzas = [s["avg_logprob"] for s in (r.segments or []) if "avg_logprob" in s]
     confianza = sum(confianzas) / len(confianzas) if confianzas else 0.0
-    if not texto or ALUCINACIONES.match(texto.strip(" .!¡¿?")) or confianza < CONFIANZA_MINIMA:
+    # Lo que Whisper inventa con ruido son palabras sueltas ("Gracias.", "Bien."). Con música de fondo, una frase
+    # real también baja de confianza (~-0.5): las frases de 3 o más palabras solo se descartan si es muy baja.
+    palabras = len(re.findall(r"\w+", texto))
+    poco_confiable = confianza < (CONFIANZA_MINIMA if palabras < 3 else CONFIANZA_MINIMA_FRASE)
+    if not texto or ALUCINACIONES.match(texto.strip(" .!¡¿?")) or poco_confiable:
         print(f"  (solo ruido: Whisper oyó {texto!r} con confianza {confianza:.2f})", flush=True)
         return ""
     return texto

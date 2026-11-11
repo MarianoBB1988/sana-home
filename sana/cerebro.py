@@ -3,7 +3,6 @@ import json
 import re
 from collections.abc import Callable
 
-from groq import Groq
 
 from . import ajustes, config, herramientas, homeassistant as ha
 
@@ -43,7 +42,7 @@ def _prompt_sistema() -> str:
 
 class Cerebro:
     def __init__(self):
-        self.cliente = Groq(api_key=config.GROQ_API_KEY)
+        self.cliente = config.cliente_groq()
         self.historial: list[dict] = []
 
     def responder(self, texto: str, al_usar_herramienta: Callable[[str], None] | None = None) -> str:

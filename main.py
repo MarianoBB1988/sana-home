@@ -101,9 +101,17 @@ def _sin_pantalla(_estado: str) -> None:
     pass
 
 
-def conversar(cerebro, voz, mic, marcar=_sin_pantalla) -> None:
+def _sin_error(funcion) -> None:
+    try:
+        funcion()
+    except Exception:
+        pass
+
+
+def conversar(cerebro, voz, mic, marcar=_sin_pantalla, iniciales=None) -> None:
     """Una charla: escucha el pedido, responde, y sigue escuchando un rato por si hay otra pregunta.
-    marcar(estado) avisa a la pantalla: escuchando, pensando o hablando."""
+    marcar(estado) avisa a la pantalla: escuchando, pensando o hablando.
+    iniciales: el comienzo del pedido si se dijo de corrido con "Sana" (ya leído del micrófono)."""
     from sana import oido
 
     espera = oido.MAX_ESPERA
@@ -111,7 +119,8 @@ def conversar(cerebro, voz, mic, marcar=_sin_pantalla) -> None:
     while True:
         marcar("escuchando")
         print(f"  Escuchando... ({espera:.0f} s)", flush=True)
-        wav = oido.grabar_frase(mic, max_espera=espera)
+        wav = oido.grabar_frase(mic, max_espera=espera, iniciales=iniciales)
+        iniciales = None
         if not wav:
             return
         marcar("pensando")
@@ -164,19 +173,35 @@ def modo_voz(cerebro, voz, con_enter: bool, pantalla=None) -> None:
         while True:
             try:
                 marcar("pausa")
+                frase, terminada, oido_vosk = [], False, ""
                 if palabra:
                     print(f'En pausa. Decí "{palabra.palabra.capitalize()}" para hablar.', flush=True)
-                    palabra.esperar(mic)
+                    frase, terminada, oido_vosk = palabra.esperar(
+                        mic, confirmar=lambda wav: oido.es_llamado(cerebro.cliente, wav)
+                    )
                 else:
                     input("[Enter para hablar]")
                 # La música baja mientras Sana escucha (en paralelo al saludo, para no demorarlo)
                 bajando = threading.Thread(target=spotify.atenuador.bajar, daemon=True)
                 bajando.start()
-                marcar("hablando")
-                saludos.decir()
-                time.sleep(0.3)  # el parlante sigue sonando un instante después de terminar
-                mic.descartar()  # que el saludo no se tome como el comienzo del pedido
-                conversar(cerebro, voz, mic, marcar)
+                # Mientras saluda y escuchás, se abre la conexión con Groq: Whisper responde ~2 s antes
+                threading.Thread(target=lambda: _sin_error(cerebro.cliente.models.list), daemon=True).start()
+                # "Sana, apagá la luz" de corrido: no se saluda ni se descarta nada, y se usa el audio de la frase
+                # completa (desde "Sana"), así no se pierde el comienzo del pedido aunque Vosk la reconozca tarde
+                sigue = oido.sigue_hablando(mic) if palabra else None
+                de_corrido = None
+                if sigue:
+                    de_corrido = frase + sigue
+                elif terminada and len(oido_vosk.split()) >= 2:  # la frase ya terminó y traía algo más que "Sana"
+                    de_corrido = frase
+                if de_corrido:
+                    print("  (pedido de corrido)", flush=True)
+                else:
+                    marcar("hablando")
+                    saludos.decir()
+                    time.sleep(0.3)  # el parlante sigue sonando un instante después de terminar
+                    mic.descartar()  # que el saludo no se tome como el comienzo del pedido
+                conversar(cerebro, voz, mic, marcar, iniciales=de_corrido)
             except (EOFError, KeyboardInterrupt):
                 restaurar_musica(bajando)
                 break

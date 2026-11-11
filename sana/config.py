@@ -42,3 +42,15 @@ MODELO_VOSK = RAIZ / os.getenv("MODELO_VOSK", "voces/vosk-model-small-es-0.42")
 MICROFONO = _dispositivo(os.getenv("MICROFONO", ""))
 PARLANTE = _dispositivo(os.getenv("PARLANTE", ""))
 SILENCIO_INICIAL = float(os.getenv("SILENCIO_INICIAL", "0.3"))
+
+
+def cliente_groq():
+    """Cliente de Groq que mantiene la conexión abierta 2 minutos (por defecto se cierra a los 5 s y cada charla
+    nueva pagaba ~2 s en reconectar)."""
+    import httpx
+    from groq import Groq
+
+    return Groq(
+        api_key=GROQ_API_KEY,
+        http_client=httpx.Client(limits=httpx.Limits(max_keepalive_connections=5, keepalive_expiry=120), timeout=60),
+    )

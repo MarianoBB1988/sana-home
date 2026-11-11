@@ -7,7 +7,6 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from groq import Groq
 from pydantic import BaseModel
 
 from . import ajustes, clima, config, herramientas, homeassistant as ha, oido
@@ -27,7 +26,7 @@ ACCIONES = {
 }
 
 app = FastAPI(title=config.NOMBRE)
-groq = Groq(api_key=config.GROQ_API_KEY)
+groq = config.cliente_groq()
 voz = Voz()
 # Los avisos ("Dejame fijarme", "Aguardá"...) se preparan desde el arranque, así suenan al instante.
 threading.Thread(
