@@ -50,6 +50,7 @@ class Cerebro:
         self.historial.append({"role": "user", "content": texto})
         mensajes = [{"role": "system", "content": _prompt_sistema()}] + self.historial[-MAX_MENSAJES:]
 
+        reintentos_vacios = 0
         for _ in range(MAX_RONDAS_HERRAMIENTAS):
             r = self.cliente.chat.completions.create(
                 model=config.GROQ_MODELO,
@@ -60,9 +61,13 @@ class Cerebro:
             msg = r.choices[0].message
             if not msg.tool_calls:
                 respuesta = (msg.content or "").strip()
-                if not respuesta:  # a veces el modelo devuelve vacío: se le pide que conteste
-                    mensajes.append({"role": "user", "content": "Respondé la pregunta anterior en una o dos oraciones."})
-                    continue
+                if not re.search(r"\w", respuesta):  # vacío o solo signos (".", "…"): no se puede decir nada
+                    reintentos_vacios += 1
+                    if reintentos_vacios > 1:
+                        respuesta = "Perdón, no te entendí."
+                    else:
+                        mensajes.append({"role": "user", "content": "Respondé lo anterior en una o dos oraciones."})
+                        continue
                 # "…por ciento.¿Te ayudo…" -> con espacio, así la voz hace la pausa entre oraciones
                 respuesta = re.sub(r"([.!?])(?=[¿¡A-ZÁÉÍÓÚÑ])", r"\1 ", respuesta)
                 self.historial.append({"role": "assistant", "content": respuesta})

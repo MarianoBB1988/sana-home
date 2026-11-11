@@ -141,11 +141,18 @@ class Voz:
         cola: queue.Queue = queue.Queue(maxsize=2)
 
         def producir():
-            for f in frases(texto):
-                resultado = self.audio(f)
-                if resultado:
-                    cola.put(sf.read(io.BytesIO(resultado[0]), dtype="int16"))
-            cola.put(None)
+            try:
+                for f in frases(texto):
+                    if not re.search(r"\w", f):  # "." o "…" solos: no hay nada que decir
+                        continue
+                    try:
+                        resultado = self.audio(f)
+                        if resultado:
+                            cola.put(sf.read(io.BytesIO(resultado[0]), dtype="int16"))
+                    except Exception as e:  # una frase que no se pudo generar se saltea; Sana no se traba
+                        print(f"  (no pude decir {f!r}: {e})", flush=True)
+            finally:
+                cola.put(None)  # siempre: si no, quien reproduce esperaría para siempre
 
         threading.Thread(target=producir, daemon=True).start()
         with self._parlante:

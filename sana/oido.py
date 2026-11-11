@@ -219,16 +219,17 @@ def a_wav(bloques: list[np.ndarray]) -> bytes:
 
 
 def es_llamado(cliente: Groq, audio: bytes, palabra: str = "") -> bool:
-    """Segunda opinión: ¿en este audio llamaron a Sana? Whisper, orientado a esperar esa palabra."""
+    """Segunda opinión: ¿en este audio llamaron a Sana? Sin sugerirle la palabra a Whisper (si se la sugiere, la
+    "confirma" aunque no la hayan dicho), y solo cuenta si la frase empieza con ella."""
     palabra = (palabra or config.PALABRA_CLAVE).lower()
     try:
         r = cliente.audio.transcriptions.create(
-            file=("llamado.wav", audio), model=config.GROQ_MODELO_STT, language="es", prompt=palabra.capitalize(),
+            file=("llamado.wav", audio), model=config.GROQ_MODELO_STT, language="es",
         )
     except Exception:
         return False
-    primeras = re.findall(r"\w+", r.text.lower())[:3]
-    return any(_distancia(_fonetica(p), _fonetica(palabra)) <= 1 for p in primeras)
+    palabras = re.findall(r"\w+", r.text.lower())
+    return bool(palabras) and _distancia(_fonetica(palabras[0]), _fonetica(palabra)) <= 1
 
 
 def transcribir(cliente: Groq, audio: bytes, nombre_archivo: str = "frase.wav") -> str:
